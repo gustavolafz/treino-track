@@ -1,7 +1,8 @@
-import { Clock, Plus, Trash2 } from 'lucide-react-native';
-import React, { useCallback, useMemo } from 'react';
+import { ChevronDown, ChevronUp, Clock, Plus, Trash2 } from 'lucide-react-native';
+import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text as RNText, View } from 'react-native';
 import { triggerNativeHaptic } from '@/modules/treino-native';
+import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { SetRow } from '@/components/workout/SetRow';
 import { parseRepsRange } from '@/lib/utils';
 import type { ExerciseLog, SetLog } from '@/types/workout';
@@ -68,6 +69,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 1,
   },
+  restActionPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
   pillText: {
     fontSize: 10,
     fontWeight: '600',
@@ -125,6 +140,8 @@ const darkColors = StyleSheet.create({
   muted: { color: '#a1a1aa' },
   outlinePill: { backgroundColor: 'transparent', borderColor: '#27272a' },
   secPill: { backgroundColor: '#27272a', borderColor: '#27272a' },
+  restAction: { backgroundColor: 'rgba(59,130,246,0.14)', borderColor: 'rgba(59,130,246,0.4)' },
+  restActionText: { color: '#60a5fa' },
   successPill: { backgroundColor: 'rgba(16,185,129,0.15)', borderColor: 'rgba(16,185,129,0.35)' },
   successText: { color: '#10b981' },
   addSetBorder: { borderColor: '#27272a' },
@@ -136,6 +153,8 @@ const lightColors = StyleSheet.create({
   muted: { color: '#71717a' },
   outlinePill: { backgroundColor: 'transparent', borderColor: '#e4e4e7' },
   secPill: { backgroundColor: '#f4f4f5', borderColor: '#e4e4e7' },
+  restAction: { backgroundColor: '#eff6ff', borderColor: '#93c5fd' },
+  restActionText: { color: '#2563eb' },
   successPill: { backgroundColor: 'rgba(16,185,129,0.12)', borderColor: 'rgba(16,185,129,0.3)' },
   successText: { color: '#059669' },
   addSetBorder: { borderColor: '#e4e4e7' },
@@ -170,8 +189,14 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
   }, [exercise.sets, exercise.targetReps, exercise.targetSets]);
 
   const restSecs = exercise.restSeconds ?? 120;
-  const iconPrimary = isDark ? '#fafafa' : '#18181b';
   const c = isDark ? darkColors : lightColors;
+  const allSetsDone = exercise.sets.length > 0 && completedCount === exercise.sets.length;
+  const [collapsed, setCollapsed] = useState<boolean>(() => allSetsDone);
+
+  const toggleCollapse = useCallback(() => {
+    triggerNativeHaptic('tap');
+    setCollapsed((v) => !v);
+  }, []);
 
   const lastSummary = useMemo(() => {
     if (!previousLog || previousLog.sets.length === 0) return null;
@@ -199,7 +224,7 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
   return (
     <View style={[styles.card, c.card]}>
       <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
+        <Pressable onPress={toggleCollapse} style={styles.headerLeft}>
           <View style={styles.titleRow}>
             <RNText style={[styles.title, c.title]}>{exercise.exerciseName}</RNText>
             {exercise.muscleGroup ? (
@@ -219,10 +244,11 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
                 triggerNativeHaptic('tap');
                 handleStartRest();
               }}
+              hitSlop={4}
             >
-              <View style={[styles.pill, c.secPill]}>
-                <Clock size={10} color={iconPrimary} />
-                <RNText style={[styles.pillText, c.title]}>{restSecs}s</RNText>
+              <View style={[styles.restActionPill, c.restAction]}>
+                <Clock size={11} color={isDark ? '#60a5fa' : '#2563eb'} />
+                <RNText style={[styles.pillText, c.restActionText]}>Timer {restSecs}s</RNText>
               </View>
             </Pressable>
 
@@ -233,66 +259,85 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
             ) : (
               <View style={[styles.pill, c.secPill]}>
                 <RNText style={[styles.pillText, c.title]}>
-                  {completedCount}/{exercise.targetSets} feitas
+                  {completedCount}/{exercise.sets.length} feitas
                   {volumeKg > 0 ? ` • ${volumeKg} kg` : ''}
                 </RNText>
               </View>
             )}
           </View>
 
-          {lastSummary ? (
+          {!collapsed && lastSummary ? (
             <RNText style={[styles.lastText, c.muted]}>Último: {lastSummary}</RNText>
           ) : null}
-        </View>
-
-        <Pressable
-          onPress={() => {
-            triggerNativeHaptic('warn');
-            onRemoveExercise(dateISO, exercise.id);
-          }}
-          hitSlop={8}
-        >
-          <View style={styles.trashBtn}>
-            <Trash2 size={16} color={isDark ? '#71717a' : '#a1a1aa'} />
-          </View>
         </Pressable>
-      </View>
 
-      <View style={styles.colsRow}>
-        <RNText style={[styles.colHeader, styles.colSet, c.muted]}>Série</RNText>
-        <RNText style={[styles.colHeader, styles.colPrev, c.muted]}>Anterior</RNText>
-        <RNText style={[styles.colHeader, styles.colWeight, c.muted]}>Carga (kg)</RNText>
-        <RNText style={[styles.colHeader, styles.colReps, c.muted]}>Reps</RNText>
-        <RNText style={[styles.colHeader, styles.colOk, c.muted]}>Ok</RNText>
-        <View style={styles.colSpacer} />
-      </View>
-
-      <View style={styles.setsWrap}>
-        {exercise.sets.map((s, idx) => (
-          <SetRow
-            key={s.id}
-            set={s}
-            prevSet={previousLog?.sets[idx]}
-            isDark={isDark}
-            canRemove={exercise.sets.length > 1}
-            onCommit={handleCommitSet}
-            onRemove={handleRemoveSet}
-            onStartRest={handleStartRest}
-          />
-        ))}
-      </View>
-
-      <Pressable
-        onPress={() => {
-          triggerNativeHaptic('tap');
-          onAddSet(dateISO, exercise.id);
-        }}
-      >
-        <View style={[styles.addSetBtn, c.addSetBorder]}>
-          <Plus size={14} color={isDark ? '#a1a1aa' : '#52525b'} />
-          <RNText style={[styles.addSetText, c.muted]}>Adicionar série</RNText>
+        <View style={styles.headerActions}>
+          <Pressable onPress={toggleCollapse} hitSlop={8}>
+            <View style={styles.trashBtn}>
+              {collapsed ? (
+                <ChevronDown size={17} color={isDark ? '#a1a1aa' : '#52525b'} />
+              ) : (
+                <ChevronUp size={17} color={isDark ? '#a1a1aa' : '#52525b'} />
+              )}
+            </View>
+          </Pressable>
+          <Pressable
+            onPress={() => {
+              triggerNativeHaptic('warn');
+              confirmDestructiveAction(
+                'Remover exercício?',
+                `Excluir "${exercise.exerciseName}" deste treino?`,
+                () => onRemoveExercise(dateISO, exercise.id)
+              );
+            }}
+            hitSlop={8}
+          >
+            <View style={styles.trashBtn}>
+              <Trash2 size={16} color={isDark ? '#71717a' : '#a1a1aa'} />
+            </View>
+          </Pressable>
         </View>
-      </Pressable>
+      </View>
+
+      {!collapsed ? (
+        <>
+          <View style={styles.colsRow}>
+            <RNText style={[styles.colHeader, styles.colSet, c.muted]}>Série</RNText>
+            <RNText style={[styles.colHeader, styles.colPrev, c.muted]}>Anterior</RNText>
+            <RNText style={[styles.colHeader, styles.colWeight, c.muted]}>Carga (kg)</RNText>
+            <RNText style={[styles.colHeader, styles.colReps, c.muted]}>Reps</RNText>
+            <RNText style={[styles.colHeader, styles.colOk, c.muted]}>Ok</RNText>
+            <View style={styles.colSpacer} />
+          </View>
+
+          <View style={styles.setsWrap}>
+            {exercise.sets.map((s, idx) => (
+              <SetRow
+                key={s.id}
+                set={s}
+                prevSet={previousLog?.sets[idx]}
+                isDark={isDark}
+                canRemove={exercise.sets.length > 1}
+                onCommit={handleCommitSet}
+                onRemove={handleRemoveSet}
+                onStartRest={handleStartRest}
+              />
+            ))}
+          </View>
+
+          <Pressable
+            onPress={() => {
+              triggerNativeHaptic('tap');
+              onAddSet(dateISO, exercise.id);
+            }}
+          >
+            <View style={[styles.addSetBtn, c.addSetBorder]}>
+              <Plus size={14} color={isDark ? '#a1a1aa' : '#52525b'} />
+              <RNText style={[styles.addSetText, c.muted]}>Adicionar série</RNText>
+            </View>
+          </Pressable>
+        </>
+      ) : null}
     </View>
   );
 });

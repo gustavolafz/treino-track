@@ -1,4 +1,4 @@
-import { Check } from 'lucide-react-native';
+import { ArrowDown, ArrowUp, Check, Edit3, Trash2 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
@@ -403,6 +403,103 @@ export const CreateSplitDialog = React.memo(function CreateSplitDialog({
         </Button>
         <Button onPress={handleCreate}>
           <Text>Criar e Ativar</Text>
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+});
+
+interface ExerciseActionDialogProps {
+  exercise: ExerciseTemplate | null;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  iconPrimary: string;
+  onClose: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+export const ExerciseActionDialog = React.memo(function ExerciseActionDialog({
+  exercise,
+  canMoveUp,
+  canMoveDown,
+  iconPrimary,
+  onClose,
+  onMoveUp,
+  onMoveDown,
+  onEdit,
+  onDelete,
+}: ExerciseActionDialogProps) {
+  return (
+    <Dialog open={exercise !== null} onOpenChange={(o) => !o && onClose()}>
+      <DialogHeader>
+        <DialogTitle>{exercise?.name ?? 'Ações do Exercício'}</DialogTitle>
+        <DialogDescription>
+          {exercise
+            ? `Meta: ${exercise.targetSets}×${exercise.targetReps} reps • Descanso ${exercise.restSeconds ?? 120}s`
+            : ''}
+        </DialogDescription>
+      </DialogHeader>
+
+      <View className="gap-2">
+        <Button
+          variant="outline"
+          className="justify-start"
+          onPress={() => {
+            onClose();
+            onEdit();
+          }}
+        >
+          <Edit3 size={16} color={iconPrimary} />
+          <Text>Editar exercício</Text>
+        </Button>
+
+        {canMoveUp ? (
+          <Button
+            variant="outline"
+            className="justify-start"
+            onPress={() => {
+              onMoveUp();
+              onClose();
+            }}
+          >
+            <ArrowUp size={16} color={iconPrimary} />
+            <Text>Subir na lista</Text>
+          </Button>
+        ) : null}
+
+        {canMoveDown ? (
+          <Button
+            variant="outline"
+            className="justify-start"
+            onPress={() => {
+              onMoveDown();
+              onClose();
+            }}
+          >
+            <ArrowDown size={16} color={iconPrimary} />
+            <Text>Descer na lista</Text>
+          </Button>
+        ) : null}
+
+        <Button
+          variant="destructive"
+          className="mt-1 justify-start"
+          onPress={() => {
+            onClose();
+            onDelete();
+          }}
+        >
+          <Trash2 size={16} color="#ffffff" />
+          <Text className="text-white">Excluir exercício</Text>
+        </Button>
+      </View>
+
+      <DialogFooter>
+        <Button variant="ghost" onPress={onClose}>
+          <Text>Fechar</Text>
         </Button>
       </DialogFooter>
     </Dialog>

@@ -1,10 +1,12 @@
 import { FlashList } from '@shopify/flash-list';
 import {
-  ArrowDown,
-  ArrowUp,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
   Edit3,
   Layers,
+  MoreVertical,
   Plus,
   RotateCcw,
   RotateCw,
@@ -16,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CreateSplitDialog,
   DayPickerDialog,
+  ExerciseActionDialog,
   ExerciseTemplateDialog,
   WorkoutTemplateDialog,
 } from '@/components/routine/RotinaDialogs';
@@ -33,6 +36,7 @@ import {
   TabsTrigger,
   Text,
 } from '@/components/ui';
+import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { formatShortDateCached } from '@/lib/dateCache';
 import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import {
@@ -47,25 +51,34 @@ const keyExtractorSplit = (item: TrainingSplit) => item.id;
 
 interface WorkoutTemplateCardProps {
   workout: WorkoutTemplate;
+  isExpanded: boolean;
   iconMuted: string;
   iconPrimary: string;
+  onToggleExpand: (id: string) => void;
   onEditWorkout: (id: string, name: string, accent: AccentTag) => void;
-  onDeleteWorkout: (id: string) => void;
-  onMoveExercise: (workoutId: string, exerciseId: string, dir: 'up' | 'down') => void;
+  onDuplicateWorkout: (id: string) => void;
+  onDeleteWorkout: (id: string, name: string) => void;
   onEditExercise: (workoutId: string, ex: ExerciseTemplate) => void;
-  onDeleteExercise: (workoutId: string, exerciseId: string) => void;
+  onOpenExerciseActions: (
+    workoutId: string,
+    ex: ExerciseTemplate,
+    canMoveUp: boolean,
+    canMoveDown: boolean
+  ) => void;
   onAddExercise: (workoutId: string) => void;
 }
 
 const WorkoutTemplateCard = React.memo(function WorkoutTemplateCard({
   workout: wk,
+  isExpanded,
   iconMuted,
   iconPrimary,
+  onToggleExpand,
   onEditWorkout,
+  onDuplicateWorkout,
   onDeleteWorkout,
-  onMoveExercise,
   onEditExercise,
-  onDeleteExercise,
+  onOpenExerciseActions,
   onAddExercise,
 }: WorkoutTemplateCardProps) {
   const totalSets = useMemo(
@@ -75,18 +88,34 @@ const WorkoutTemplateCard = React.memo(function WorkoutTemplateCard({
 
   return (
     <Card className="mb-3">
-      <CardHeader className="pb-2">
-        <View className="flex-row items-center justify-between">
-          <View className="flex-1 pr-2">
-            <CardTitle>{wk.name}</CardTitle>
+      <CardHeader className={isExpanded ? 'pb-2' : 'pb-4'}>
+        <View className="flex-row items-center justify-between gap-2">
+          <Pressable onPress={() => onToggleExpand(wk.id)} className="flex-1 pr-2">
+            <View className="flex-row items-center gap-1.5">
+              <CardTitle>{wk.name}</CardTitle>
+              {isExpanded ? (
+                <ChevronUp size={15} color={iconMuted} />
+              ) : (
+                <ChevronDown size={15} color={iconMuted} />
+              )}
+            </View>
             <CardDescription>
               {wk.exercises.length} exercícios • Meta total: {totalSets} séries
             </CardDescription>
-          </View>
-          <View className="flex-row items-center gap-1">
+          </Pressable>
+          <View className="flex-row items-center gap-0.5">
             <Button
               variant="ghost"
               size="icon"
+              accessibilityLabel={`Duplicar ${wk.name}`}
+              onPress={() => onDuplicateWorkout(wk.id)}
+            >
+              <Copy size={15} color={iconMuted} />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              accessibilityLabel={`Editar ${wk.name}`}
               onPress={() => onEditWorkout(wk.id, wk.name, wk.accent)}
             >
               <Edit3 size={15} color={iconMuted} />
@@ -94,7 +123,8 @@ const WorkoutTemplateCard = React.memo(function WorkoutTemplateCard({
             <Button
               variant="ghost"
               size="icon"
-              onPress={() => onDeleteWorkout(wk.id)}
+              accessibilityLabel={`Excluir ${wk.name}`}
+              onPress={() => onDeleteWorkout(wk.id, wk.name)}
             >
               <Trash2 size={15} color="#ef4444" />
             </Button>
@@ -102,67 +132,65 @@ const WorkoutTemplateCard = React.memo(function WorkoutTemplateCard({
         </View>
       </CardHeader>
 
-      <CardContent className="gap-2">
-        {wk.exercises.length === 0 ? (
-          <View className="items-center rounded-lg border border-dashed border-border py-4">
-            <Text className="text-xs text-muted-foreground">
-              Nenhum exercício neste treino.
-            </Text>
-          </View>
-        ) : (
-          wk.exercises.map((ex, idx) => (
-            <View
-              key={ex.id}
-              className="flex-row items-center justify-between rounded-lg border border-border bg-background/60 p-2.5"
-            >
-              <View className="flex-1 pr-2">
-                <View className="flex-row flex-wrap items-center gap-1.5">
-                  <Text className="text-sm font-semibold text-foreground">
-                    {idx + 1}. {ex.name}
-                  </Text>
-                  {ex.muscleGroup ? (
-                    <Badge variant="outline" className="px-1.5 py-0">
-                      <Text className="text-[10px]">{ex.muscleGroup}</Text>
-                    </Badge>
-                  ) : null}
-                </View>
-                <Text className="mt-0.5 text-xs text-muted-foreground">
-                  Meta: {ex.targetSets}×{ex.targetReps} reps • Descanso:{' '}
-                  {ex.restSeconds ?? 120}s
-                  {ex.targetWeightKg ? ` • Alvo: ${ex.targetWeightKg}kg` : ''}
-                </Text>
-              </View>
-
-              <View className="flex-row items-center gap-0.5">
-                <Pressable onPress={() => onMoveExercise(wk.id, ex.id, 'up')} className="p-1.5">
-                  <ArrowUp size={14} color={iconMuted} />
-                </Pressable>
-                <Pressable onPress={() => onMoveExercise(wk.id, ex.id, 'down')} className="p-1.5">
-                  <ArrowDown size={14} color={iconMuted} />
-                </Pressable>
-                <Pressable onPress={() => onEditExercise(wk.id, ex)} className="p-1.5">
-                  <Edit3 size={14} color={iconPrimary} />
-                </Pressable>
-                <Pressable onPress={() => onDeleteExercise(wk.id, ex.id)} className="p-1.5">
-                  <Trash2 size={14} color="#ef4444" />
-                </Pressable>
-              </View>
+      {isExpanded ? (
+        <CardContent className="gap-2">
+          {wk.exercises.length === 0 ? (
+            <View className="items-center rounded-lg border border-dashed border-border py-4">
+              <Text className="text-xs text-muted-foreground">
+                Nenhum exercício neste treino.
+              </Text>
             </View>
-          ))
-        )}
+          ) : (
+            wk.exercises.map((ex, idx) => (
+              <View
+                key={ex.id}
+                className="flex-row items-center justify-between rounded-lg border border-border bg-background/60 p-2.5"
+              >
+                <Pressable onPress={() => onEditExercise(wk.id, ex)} className="flex-1 pr-2">
+                  <View className="flex-row flex-wrap items-center gap-1.5">
+                    <Text className="text-sm font-semibold text-foreground">
+                      {idx + 1}. {ex.name}
+                    </Text>
+                    {ex.muscleGroup ? (
+                      <Badge variant="outline" className="px-1.5 py-0">
+                        <Text className="text-[10px]">{ex.muscleGroup}</Text>
+                      </Badge>
+                    ) : null}
+                  </View>
+                  <Text className="mt-0.5 text-xs text-muted-foreground">
+                    Meta: {ex.targetSets}×{ex.targetReps} reps • Descanso:{' '}
+                    {ex.restSeconds ?? 120}s
+                    {ex.targetWeightKg ? ` • Alvo: ${ex.targetWeightKg}kg` : ''}
+                  </Text>
+                </Pressable>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          className="mt-1"
-          onPress={() => onAddExercise(wk.id)}
-        >
-          <Plus size={14} color={iconPrimary} />
-          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} className="px-0.5">
-            Adicionar Exercício
-          </Text>
-        </Button>
-      </CardContent>
+                <Pressable
+                  onPress={() =>
+                    onOpenExerciseActions(wk.id, ex, idx > 0, idx < wk.exercises.length - 1)
+                  }
+                  hitSlop={4}
+                  className="h-10 w-10 items-center justify-center rounded-lg active:bg-secondary"
+                  accessibilityLabel={`Ações de ${ex.name}`}
+                >
+                  <MoreVertical size={17} color={iconMuted} />
+                </Pressable>
+              </View>
+            ))
+          )}
+
+          <Button
+            variant="secondary"
+            size="sm"
+            className="mt-1"
+            onPress={() => onAddExercise(wk.id)}
+          >
+            <Plus size={14} color={iconPrimary} />
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85} className="px-0.5">
+              Adicionar Exercício
+            </Text>
+          </Button>
+        </CardContent>
+      ) : null}
     </Card>
   );
 });
@@ -227,7 +255,17 @@ const SplitCard = React.memo(function SplitCard({
               </Button>
             ) : null}
             {canDelete ? (
-              <Button variant="ghost" size="icon" onPress={() => onDelete(split.id)}>
+              <Button
+                variant="ghost"
+                size="icon"
+                onPress={() =>
+                  confirmDestructiveAction(
+                    'Excluir divisão?',
+                    `Remover "${split.name}" das suas divisões? O histórico já registrado não é perdido.`,
+                    () => onDelete(split.id)
+                  )
+                }
+              >
                 <Trash2 size={14} color="#ef4444" />
               </Button>
             ) : null}
@@ -251,6 +289,7 @@ export default function RotinaScreen() {
     deleteSplit,
     addWorkoutTemplate,
     updateWorkoutTemplate,
+    duplicateWorkoutTemplate,
     deleteWorkoutTemplate,
     addExerciseTemplate,
     updateExerciseTemplate,
@@ -263,6 +302,15 @@ export default function RotinaScreen() {
   const iconPrimary = isDark ? '#fafafa' : '#18181b';
 
   const [tab, setTab] = useState('semana');
+  const [expandedWorkoutIds, setExpandedWorkoutIds] = useState<Record<string, boolean>>(() =>
+    activeSplit.workouts[0] ? { [activeSplit.workouts[0].id]: true } : {}
+  );
+  const [exActionTarget, setExActionTarget] = useState<{
+    workoutId: string;
+    exercise: ExerciseTemplate;
+    canMoveUp: boolean;
+    canMoveDown: boolean;
+  } | null>(null);
 
   // Lightweight modal visibility / target references (form states live inside RotinaDialogs)
   const [dayPickerDay, setDayPickerDay] = useState<WeekdayIndex | null>(null);
@@ -338,29 +386,65 @@ export default function RotinaScreen() {
     [addExerciseTemplate, updateExerciseTemplate]
   );
 
+  const toggleExpandWorkout = useCallback((workoutId: string) => {
+    setExpandedWorkoutIds((prev) => ({ ...prev, [workoutId]: !prev[workoutId] }));
+  }, []);
+
+  const handleDuplicateWorkout = useCallback(
+    (workoutId: string) => {
+      const createdId = duplicateWorkoutTemplate(workoutId);
+      if (createdId) {
+        setExpandedWorkoutIds((prev) => ({ ...prev, [createdId]: true }));
+      }
+    },
+    [duplicateWorkoutTemplate]
+  );
+
+  const handleDeleteWorkoutConfirmed = useCallback(
+    (workoutId: string, workoutName: string) => {
+      confirmDestructiveAction(
+        'Excluir treino?',
+        `Remover "${workoutName}" desta divisão? Dias vinculados a ele passarão para Descanso.`,
+        () => deleteWorkoutTemplate(workoutId)
+      );
+    },
+    [deleteWorkoutTemplate]
+  );
+
+  const handleOpenExerciseActions = useCallback(
+    (workoutId: string, exercise: ExerciseTemplate, canMoveUp: boolean, canMoveDown: boolean) => {
+      setExActionTarget({ workoutId, exercise, canMoveUp, canMoveDown });
+    },
+    []
+  );
+
   const renderWorkoutCard = useCallback(
     ({ item }: { item: WorkoutTemplate }) => (
       <WorkoutTemplateCard
         workout={item}
+        isExpanded={Boolean(expandedWorkoutIds[item.id])}
         iconMuted={iconMuted}
         iconPrimary={iconPrimary}
+        onToggleExpand={toggleExpandWorkout}
         onEditWorkout={openEditWorkout}
-        onDeleteWorkout={deleteWorkoutTemplate}
-        onMoveExercise={moveExerciseTemplate}
+        onDuplicateWorkout={handleDuplicateWorkout}
+        onDeleteWorkout={handleDeleteWorkoutConfirmed}
         onEditExercise={openEditExercise}
-        onDeleteExercise={deleteExerciseTemplate}
+        onOpenExerciseActions={handleOpenExerciseActions}
         onAddExercise={openNewExercise}
       />
     ),
     [
-      deleteExerciseTemplate,
-      deleteWorkoutTemplate,
+      expandedWorkoutIds,
+      handleDeleteWorkoutConfirmed,
+      handleDuplicateWorkout,
+      handleOpenExerciseActions,
       iconMuted,
       iconPrimary,
-      moveExerciseTemplate,
       openEditExercise,
       openEditWorkout,
       openNewExercise,
+      toggleExpandWorkout,
     ]
   );
 
@@ -527,6 +611,7 @@ export default function RotinaScreen() {
 
           <FlashList
             data={activeSplit.workouts}
+            extraData={expandedWorkoutIds}
             keyExtractor={keyExtractorWorkout}
             renderItem={renderWorkoutCard}
             contentContainerStyle={{ paddingBottom: 32 }}
@@ -580,6 +665,39 @@ export default function RotinaScreen() {
         open={splitDialogOpen}
         onOpenChange={setSplitDialogOpen}
         onCreate={createSplit}
+      />
+
+      <ExerciseActionDialog
+        exercise={exActionTarget?.exercise ?? null}
+        canMoveUp={exActionTarget?.canMoveUp ?? false}
+        canMoveDown={exActionTarget?.canMoveDown ?? false}
+        iconPrimary={iconPrimary}
+        onClose={() => setExActionTarget(null)}
+        onMoveUp={() => {
+          if (exActionTarget) {
+            moveExerciseTemplate(exActionTarget.workoutId, exActionTarget.exercise.id, 'up');
+          }
+        }}
+        onMoveDown={() => {
+          if (exActionTarget) {
+            moveExerciseTemplate(exActionTarget.workoutId, exActionTarget.exercise.id, 'down');
+          }
+        }}
+        onEdit={() => {
+          if (exActionTarget) {
+            openEditExercise(exActionTarget.workoutId, exActionTarget.exercise);
+          }
+        }}
+        onDelete={() => {
+          if (exActionTarget) {
+            const { workoutId, exercise } = exActionTarget;
+            confirmDestructiveAction(
+              'Excluir exercício?',
+              `Remover "${exercise.name}" deste treino?`,
+              () => deleteExerciseTemplate(workoutId, exercise.id)
+            );
+          }
+        }}
       />
     </SafeAreaView>
   );

@@ -181,6 +181,7 @@ export interface WorkoutStoreActions {
   // Workout Templates & Exercises
   addWorkoutTemplate: (name: string, accent: AccentTag) => string;
   updateWorkoutTemplate: (workoutId: string, name: string, accent: AccentTag) => void;
+  duplicateWorkoutTemplate: (workoutId: string) => string | null;
   deleteWorkoutTemplate: (workoutId: string) => void;
   addExerciseTemplate: (workoutId: string, exercise: Omit<ExerciseTemplate, 'id'>) => void;
   updateExerciseTemplate: (
@@ -468,6 +469,26 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           w.id === workoutId ? { ...w, name: name.trim() || w.name, accent } : w
         ),
       }));
+    },
+
+    duplicateWorkoutTemplate: (workoutId) => {
+      const src = get().activeSplit.workouts.find((w) => w.id === workoutId);
+      if (!src) return null;
+      const id = createId('wk');
+      const copy: WorkoutTemplate = {
+        id,
+        name: `${src.name} (Cópia)`,
+        accent: src.accent,
+        exercises: src.exercises.map((e) => ({
+          ...e,
+          id: createId('ex'),
+        })),
+      };
+      updateActiveSplit((s) => ({
+        ...s,
+        workouts: [...s.workouts, copy],
+      }));
+      return id;
     },
 
     deleteWorkoutTemplate: (workoutId) => {

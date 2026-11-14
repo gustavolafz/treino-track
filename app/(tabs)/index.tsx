@@ -1,4 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
+import { useRouter } from 'expo-router';
 import {
   Check,
   Dumbbell,
@@ -21,15 +22,18 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Progress,
   Separator,
   Text,
 } from '@/components/ui';
+import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { ExerciseLogCard } from '@/components/workout/ExerciseLogCard';
 import { RestTimerBar, type RestTimerTrigger } from '@/components/workout/RestTimerBar';
 import {
   AddExerciseDialog,
   SkipDayDialog,
   SwitchWorkoutDialog,
+  WorkoutCompletedDialog,
 } from '@/components/workout/TreinoDialogs';
 import { WeekStripHeader } from '@/components/workout/WeekStripHeader';
 import {
@@ -51,9 +55,11 @@ const EMPTY_EXERCISES: ExerciseLog[] = [];
 const keyExtractorExercise = (item: ExerciseLog) => item.id;
 
 export default function TreinoScreen() {
+  const router = useRouter();
   const themePreference = useThemePreference();
   const activeSplit = useWorkoutStore((s) => s.activeSplit);
   const lastExerciseHistory = useWorkoutStore((s) => s.lastExerciseHistory);
+  const logsByDate = useWorkoutStore((s) => s.logsByDate);
   const {
     toggleTheme,
     ensureDateRangeLoaded,
@@ -100,6 +106,7 @@ export default function TreinoScreen() {
   const [skipDialogOpen, setSkipDialogOpen] = useState(false);
   const [switchDialogOpen, setSwitchDialogOpen] = useState(false);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
+  const [completedDialogOpen, setCompletedDialogOpen] = useState(false);
 
   const plannedWorkout = useMemo(() => {
     const workoutId = activeSplit.weeklySchedule[getWeekdayCached(selectedDate)];
@@ -219,6 +226,50 @@ export default function TreinoScreen() {
     ]
   );
 
+  const isSessionActive = currentLog?.status === 'in_progress';
+
+  const completionMeta = useMemo(() => {
+    let weekCompleted = 0;
+    let weekPlanned = 0;
+    for (let i = 0; i < 7; i++) {
+      const dISO = addDaysCached(weekMonday, i);
+      const wd = getWeekdayCached(dISO);
+      if (activeSplit.weeklySchedule[wd]) weekPlanned += 1;
+      if (logsByDate[dISO]?.status === 'completed') weekCompleted += 1;
+    }
+
+    let prevVolumeKg: number | null = null;
+    if (currentLog) {
+      let bestDate = '';
+      for (const dateKey in logsByDate) {
+        const log = logsByDate[dateKey];
+        if (
+          log.status === 'completed' &&
+          log.date < selectedDate &&
+          log.workoutName === currentLog.workoutName &&
+          log.date > bestDate
+        ) {
+          bestDate = log.date;
+          let vol = 0;
+          for (const ex of log.exercises) {
+            for (const s of ex.sets) {
+              if (s.completed) vol += s.weightKg * s.reps;
+            }
+          }
+          prevVolumeKg = Math.round(vol);
+        }
+      }
+    }
+
+    return { weekCompleted, weekPlanned, prevVolumeKg };
+  }, [activeSplit.weeklySchedule, currentLog, logsByDate, selectedDate, weekMonday]);
+
+  const handleFinishWorkout = useCallback(() => {
+    setRestTrigger(null);
+    setWorkoutStatus(selectedDate, 'completed');
+    setCompletedDialogOpen(true);
+  }, [selectedDate, setWorkoutStatus]);
+
   const workoutFooter = useMemo(() => {
     if (!currentLog || currentLog.status === 'skipped') return null;
     return (
@@ -278,7 +329,7 @@ export default function TreinoScreen() {
               <Button
                 className="bg-emerald-600"
                 haptic="confirm"
-                onPress={() => setWorkoutStatus(selectedDate, 'completed')}
+                onPress={handleFinishWorkout}
               >
                 <Check size={16} color="#ffffff" />
                 <Text className="text-white">Concluir e Salvar Treino</Text>
@@ -288,22 +339,25 @@ export default function TreinoScreen() {
         </Card>
       </View>
     );
-  }, [currentLog, iconPrimary, logSummary, selectedDate, setWorkoutStatus]);
+  }, [currentLog, handleFinishWorkout, iconPrimary, logSummary, selectedDate, setWorkoutStatus]);
+
+  const showBottomDock = isSessionActive || restTrigger !== null;
+  const sessionPct =
+    logSummary.totalSets > 0
+      ? Math.min(100, Math.round((logSummary.completedSets / logSummary.totalSets) * 100))
+      : 0;
 
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
-      {restTrigger ? (
-        <View className="px-4 pt-2">
-          <RestTimerBar trigger={restTrigger} isDark={isDark} onDismiss={handleDismissRest} />
-        </View>
-      ) : null}
-
       <FlashList
         data={exerciseData}
         keyExtractor={keyExtractorExercise}
         renderItem={renderExerciseItem}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingBottom: showBottomDock ? 148 : 32,
+        }}
         ListHeaderComponent={
           <View>
         {/* Header */}
@@ -341,6 +395,7 @@ export default function TreinoScreen() {
           todayISO={todayISO}
           activeSplit={activeSplit}
           iconMuted={iconMuted}
+          compact={isSessionActive}
           onSelectDate={setSelectedDate}
           onSelectWeekDelta={handleSelectWeekDelta}
           onJumpToday={handleJumpToday}
@@ -557,7 +612,13 @@ export default function TreinoScreen() {
                   variant="ghost"
                   size="sm"
                   className="px-2"
-                  onPress={() => deleteWorkoutLog(selectedDate)}
+                  onPress={() =>
+                    confirmDestructiveAction(
+                      'Excluir registro do dia?',
+                      'Isso apaga as séries registradas neste dia e volta o dia ao planejamento.',
+                      () => deleteWorkoutLog(selectedDate)
+                    )
+                  }
                 >
                   <Trash2 size={14} color="#ef4444" />
                 </Button>
@@ -592,6 +653,61 @@ export default function TreinoScreen() {
         onOpenChange={setAddExerciseOpen}
         onAddExercise={handleAddAdHocExercise}
       />
+
+      <WorkoutCompletedDialog
+        open={completedDialogOpen}
+        onOpenChange={setCompletedDialogOpen}
+        workoutName={currentLog?.workoutName ?? 'Treino'}
+        completedSets={logSummary.completedSets}
+        totalSets={logSummary.totalSets}
+        totalReps={logSummary.totalReps}
+        volumeKg={logSummary.volumeKg}
+        prevVolumeKg={completionMeta.prevVolumeKg}
+        weekCompleted={completionMeta.weekCompleted}
+        weekPlanned={completionMeta.weekPlanned}
+        onViewEvolution={() => router.navigate('/(tabs)/evolucao')}
+      />
+
+      {showBottomDock ? (
+        <View
+          pointerEvents="box-none"
+          style={{ position: 'absolute', left: 16, right: 16, bottom: 10 }}
+          className="gap-2"
+        >
+          {restTrigger ? (
+            <RestTimerBar trigger={restTrigger} isDark={isDark} onDismiss={handleDismissRest} />
+          ) : null}
+
+          {isSessionActive ? (
+            <View className="flex-row items-center justify-between gap-3 rounded-xl border border-border bg-card px-3.5 py-2.5 shadow-lg">
+              <View className="flex-1 gap-1.5">
+                <View className="flex-row items-center justify-between">
+                  <Text className="text-xs font-semibold text-foreground" numberOfLines={1}>
+                    {currentLog?.workoutName ?? 'Treino'} • {logSummary.completedSets}/{logSummary.totalSets} séries
+                  </Text>
+                  <Text className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                    {sessionPct}%
+                  </Text>
+                </View>
+                <Progress
+                  value={sessionPct}
+                  indicatorClassName="bg-emerald-500"
+                />
+              </View>
+
+              <Button
+                size="sm"
+                className="bg-emerald-600 px-3.5"
+                haptic="confirm"
+                onPress={handleFinishWorkout}
+              >
+                <Check size={15} color="#ffffff" />
+                <Text className="text-white">Concluir</Text>
+              </Button>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </SafeAreaView>
   );
 }

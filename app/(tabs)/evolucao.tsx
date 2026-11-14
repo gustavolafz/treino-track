@@ -1,5 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
-import { Plus, Scale, Trash2, Trophy } from 'lucide-react-native';
+import { Flame, Scale, Trash2, Trophy } from 'lucide-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,6 +24,7 @@ import {
   TabsTrigger,
   Text,
 } from '@/components/ui';
+import { confirmDestructiveAction } from '@/components/ui/confirm';
 import {
   queryAllCompletedSessionsNativeSync,
   queryDistinctCompletedExercisesSync,
@@ -34,6 +35,7 @@ import {
   addDaysCached,
   formatShortDateCached,
   getMondayOfWeekCached,
+  getWeekdayCached,
 } from '@/lib/dateCache';
 import { cn, toISODate } from '@/lib/utils';
 import {
@@ -76,8 +78,18 @@ const BodyMetricRow = React.memo(function BodyMetricRow({
           {entry.notes ? ` • ${entry.notes}` : ''}
         </Text>
       </View>
-      <Pressable onPress={() => onDelete(entry.id)} className="p-1.5">
-        <Trash2 size={14} color="#ef4444" />
+      <Pressable
+        onPress={() =>
+          confirmDestructiveAction(
+            'Excluir medição?',
+            `Remover o registro de ${formatShortDateCached(entry.date)} (${entry.weightKg} kg)?`,
+            () => onDelete(entry.id)
+          )
+        }
+        hitSlop={6}
+        className="h-9 w-9 items-center justify-center rounded-lg active:bg-secondary"
+      >
+        <Trash2 size={15} color="#ef4444" />
       </Pressable>
     </View>
   );
@@ -87,6 +99,7 @@ export default function EvolucaoScreen() {
   const themePreference = useThemePreference();
   // Subscribe only to the SQLite analytics revision counter (0 re-renders while typing in-progress sets)
   const analyticsRevision = useWorkoutStore((s) => s.analyticsRevision);
+  const activeSplit = useWorkoutStore((s) => s.activeSplit);
   const completedCountBySplit = useWorkoutStore((s) => s.completedCountBySplit);
   const bodyMetrics = useWorkoutStore((s) => s.data.bodyMetrics);
   const splits = useWorkoutStore((s) => s.data.splits);
@@ -249,8 +262,23 @@ export default function EvolucaoScreen() {
         ? Math.round((totalDone / (totalDone + totalSkipped)) * 100)
         : 100;
 
-    return { bars, totalDone, totalSkipped, adherence };
-  }, [analyticsRevision, cutoffISO]);
+    const currentWeekMon = getMondayOfWeekCached(todayISO);
+    let weekPlanned = 0;
+    for (let i = 0; i < 7; i++) {
+      const wd = getWeekdayCached(addDaysCached(currentWeekMon, i));
+      if (activeSplit.weeklySchedule[wd]) weekPlanned += 1;
+    }
+    const thisWeekDone = weekMap.get(currentWeekMon)?.completed ?? 0;
+
+    let streakWeeks = 0;
+    const sortedWeeks = Array.from(weekMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+    for (let i = 0; i < sortedWeeks.length; i++) {
+      if (sortedWeeks[i][1].completed > 0) streakWeeks += 1;
+      else break;
+    }
+
+    return { bars, totalDone, totalSkipped, adherence, thisWeekDone, weekPlanned, streakWeeks };
+  }, [activeSplit.weeklySchedule, analyticsRevision, cutoffISO, todayISO]);
 
   const renderExerciseChip = useCallback(
     ({ item }: { item: string }) => {
@@ -345,14 +373,13 @@ export default function EvolucaoScreen() {
 
         <View className="mt-1 flex-row items-center justify-between">
           <Text className="text-base font-semibold text-foreground">Histórico Corporal</Text>
-          <Button variant="secondary" size="sm" onPress={() => setBodyDialogOpen(true)}>
-            <Plus size={14} color={isDark ? '#fafafa' : '#18181b'} />
-            <Text>Nova Medição</Text>
-          </Button>
+          <Text className="text-xs text-muted-foreground">
+            {bodyCharts.sortedDesc.length} registros
+          </Text>
         </View>
       </View>
     ),
-    [bodyCharts, isDark]
+    [bodyCharts]
   );
 
   return (
@@ -373,29 +400,6 @@ export default function EvolucaoScreen() {
             <Text>+ Peso / BF</Text>
           </Button>
         </View>
-
-        {/* Timeframe Selector */}
-        <View className="mb-3 flex-row gap-1.5">
-          {RANGE_OPTIONS.map((opt) => (
-            <Pressable
-              key={opt.key}
-              onPress={() => setRange(opt.key)}
-              className={cn(
-                'flex-1 items-center rounded-lg border py-2',
-                range === opt.key ? 'border-primary bg-primary' : 'border-border bg-card'
-              )}
-            >
-              <Text
-                className={cn(
-                  'text-xs font-semibold',
-                  range === opt.key ? 'text-primary-foreground' : 'text-muted-foreground'
-                )}
-              >
-                {opt.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
       </View>
 
       <Tabs value={tab} onValueChange={setTab} className="flex-1 px-4">
@@ -410,6 +414,29 @@ export default function EvolucaoScreen() {
             <Text>Consistência</Text>
           </TabsTrigger>
         </TabsList>
+
+        {/* Timeframe Selector (scoped inside views container for clean hierarchy) */}
+        <View className="mt-2.5 mb-2 flex-row gap-1.5">
+          {RANGE_OPTIONS.map((opt) => (
+            <Pressable
+              key={opt.key}
+              onPress={() => setRange(opt.key)}
+              className={cn(
+                'flex-1 items-center rounded-lg border py-1.5',
+                range === opt.key ? 'border-primary bg-primary' : 'border-border bg-card'
+              )}
+            >
+              <Text
+                className={cn(
+                  'text-xs font-semibold',
+                  range === opt.key ? 'text-primary-foreground' : 'text-muted-foreground'
+                )}
+              >
+                {opt.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
 
         {/* TAB 1: Carga, Reps & Volume */}
         <TabsContent value="treino" keepMounted className="flex-1">
@@ -535,6 +562,27 @@ export default function EvolucaoScreen() {
                 </CardContent>
               </Card>
             </View>
+
+            <Card className="border-emerald-500/30 bg-emerald-500/10">
+              <CardContent className="flex-row items-center justify-between pt-3.5">
+                <View className="flex-1 flex-row items-center gap-2.5 pr-2">
+                  <Flame size={18} color="#10b981" />
+                  <View className="flex-1">
+                    <Text className="text-xs font-semibold text-foreground">
+                      {consistencyData.thisWeekDone >= consistencyData.weekPlanned && consistencyData.weekPlanned > 0
+                        ? 'Meta desta semana concluída!'
+                        : `Falta(m) ${Math.max(0, consistencyData.weekPlanned - consistencyData.thisWeekDone)} treino(s) para fechar a semana`}
+                    </Text>
+                    <Text className="text-[11px] text-muted-foreground">
+                      Semana atual: {consistencyData.thisWeekDone}/{consistencyData.weekPlanned} treinos
+                    </Text>
+                  </View>
+                </View>
+                <Badge variant="success">
+                  <Text>{consistencyData.streakWeeks} sem. ativas</Text>
+                </Badge>
+              </CardContent>
+            </Card>
 
             <ConsistencyBarChart
               title="Treinos por Semana"

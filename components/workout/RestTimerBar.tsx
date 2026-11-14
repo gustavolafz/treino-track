@@ -103,12 +103,15 @@ export const RestTimerBar = React.memo(function RestTimerBar({
   if (!trigger || remainingSec <= 0) return null;
 
   return (
-    <View className="mb-3 overflow-hidden rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-3.5 py-2.5">
+    <View className="overflow-hidden rounded-xl border border-emerald-500/45 bg-card px-3.5 py-2.5 shadow-lg">
       <View className="flex-row items-center justify-between gap-2">
         <View className="flex-1 flex-row items-center gap-2">
           <Timer size={16} color="#10b981" />
           <View className="flex-1">
-            <Text className="text-[11px] font-medium text-emerald-500" numberOfLines={1}>
+            <Text
+              className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400"
+              numberOfLines={1}
+            >
               Descanso • {exerciseLabel}
             </Text>
             <Text className="text-base font-bold text-foreground tabular-nums">
@@ -124,13 +127,15 @@ export const RestTimerBar = React.memo(function RestTimerBar({
         <View className="flex-row items-center gap-1.5">
           <Pressable
             onPress={() => adjustTime(-15)}
-            className="rounded-lg border border-border bg-card px-2.5 py-1.5 active:opacity-75"
+            hitSlop={4}
+            className="h-9 items-center justify-center rounded-lg border border-border bg-secondary px-3 active:opacity-75"
           >
             <Text className="text-xs font-semibold text-foreground">-15s</Text>
           </Pressable>
           <Pressable
             onPress={() => adjustTime(30)}
-            className="rounded-lg border border-border bg-card px-2.5 py-1.5 active:opacity-75"
+            hitSlop={4}
+            className="h-9 items-center justify-center rounded-lg border border-border bg-secondary px-3 active:opacity-75"
           >
             <Text className="text-xs font-semibold text-foreground">+30s</Text>
           </Pressable>
@@ -139,10 +144,10 @@ export const RestTimerBar = React.memo(function RestTimerBar({
               triggerNativeHaptic('tap');
               onDismiss();
             }}
-            hitSlop={8}
-            className="rounded-lg bg-secondary p-1.5 active:opacity-75"
+            hitSlop={6}
+            className="h-9 w-9 items-center justify-center rounded-lg bg-secondary active:opacity-75"
           >
-            <X size={14} color={isDark ? '#e4e4e7' : '#27272a'} />
+            <X size={15} color={isDark ? '#e4e4e7' : '#27272a'} />
           </Pressable>
         </View>
       </View>

@@ -1,5 +1,5 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react-native';
-import React, { useMemo } from 'react';
+import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react-native';
+import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Badge, Button, Card, CardContent, Progress, Text } from '@/components/ui';
 import {
@@ -14,11 +14,19 @@ import type { TrainingSplit } from '@/types/workout';
 interface WeekProgressCardProps {
   weekMonday: string;
   activeSplit: TrainingSplit;
+  compact: boolean;
+  expanded: boolean;
+  onToggleExpand: () => void;
+  iconMuted: string;
 }
 
 const WeekProgressCard = React.memo(function WeekProgressCard({
   weekMonday,
   activeSplit,
+  compact,
+  expanded,
+  onToggleExpand,
+  iconMuted,
 }: WeekProgressCardProps) {
   // Scalar selector: typing sets or toggling checkboxes inside an in_progress workout
   // returns the identical primitive string and prevents re-renders.
@@ -45,37 +53,42 @@ const WeekProgressCard = React.memo(function WeekProgressCard({
   const pct = Math.min(100, Math.round((completedCount / Math.max(1, plannedCount)) * 100));
 
   return (
-    <Card className="mb-3">
-      <CardContent className="pt-4">
-        <View className="mb-2 flex-row items-center justify-between gap-2">
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.8}
-            className="flex-1 text-xs font-medium text-muted-foreground"
-          >
-            Semana de {formatShortDateCached(weekMonday)} a{' '}
-            {formatShortDateCached(addDaysCached(weekMonday, 6))}
-          </Text>
-          <View className="shrink-0 flex-row items-center gap-1.5">
-            {skippedCount > 0 ? (
-              <Badge variant="warning">
-                <Text>{skippedCount} skip</Text>
-              </Badge>
-            ) : null}
-            <Badge variant={pct >= 100 ? 'success' : 'secondary'}>
-              <Text>
-                {completedCount}/{plannedCount} treinos
-              </Text>
+    <Pressable onPress={compact ? onToggleExpand : undefined} disabled={!compact}>
+      <View className="mb-2 flex-row items-center justify-between gap-2">
+        <Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.8}
+          className="flex-1 text-xs font-medium text-muted-foreground"
+        >
+          Semana de {formatShortDateCached(weekMonday)} a{' '}
+          {formatShortDateCached(addDaysCached(weekMonday, 6))}
+        </Text>
+        <View className="shrink-0 flex-row items-center gap-1.5">
+          {skippedCount > 0 ? (
+            <Badge variant="warning">
+              <Text>{skippedCount} skip</Text>
             </Badge>
-          </View>
+          ) : null}
+          <Badge variant={pct >= 100 ? 'success' : 'secondary'}>
+            <Text>
+              {completedCount}/{plannedCount} treinos
+            </Text>
+          </Badge>
+          {compact ? (
+            expanded ? (
+              <ChevronUp size={15} color={iconMuted} />
+            ) : (
+              <ChevronDown size={15} color={iconMuted} />
+            )
+          ) : null}
         </View>
-        <Progress
-          value={pct}
-          indicatorClassName={pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}
-        />
-      </CardContent>
-    </Card>
+      </View>
+      <Progress
+        value={pct}
+        indicatorClassName={pct >= 100 ? 'bg-emerald-500' : 'bg-primary'}
+      />
+    </Pressable>
   );
 });
 
@@ -170,6 +183,7 @@ interface WeekStripHeaderProps {
   todayISO: string;
   activeSplit: TrainingSplit;
   iconMuted: string;
+  compact?: boolean;
   onSelectDate: (dateISO: string) => void;
   onSelectWeekDelta: (deltaWeeks: number) => void;
   onJumpToday: () => void;
@@ -181,10 +195,14 @@ export const WeekStripHeader = React.memo(function WeekStripHeader({
   todayISO,
   activeSplit,
   iconMuted,
+  compact = false,
   onSelectDate,
   onSelectWeekDelta,
   onJumpToday,
 }: WeekStripHeaderProps) {
+  const [expandedInCompact, setExpandedInCompact] = useState(false);
+  const showCalendar = !compact || expandedInCompact;
+
   const days = useMemo(() => {
     return WEEKDAYS_MON_SUN.map((wd, idx) => {
       const dateISO = addDaysCached(weekMonday, idx);
@@ -203,41 +221,52 @@ export const WeekStripHeader = React.memo(function WeekStripHeader({
   }, [activeSplit.weeklySchedule, activeSplit.workouts, todayISO, weekMonday]);
 
   return (
-    <>
-      <WeekProgressCard weekMonday={weekMonday} activeSplit={activeSplit} />
+    <Card className="mb-3">
+      <CardContent className="pt-3.5">
+        <WeekProgressCard
+          weekMonday={weekMonday}
+          activeSplit={activeSplit}
+          compact={compact}
+          expanded={expandedInCompact}
+          onToggleExpand={() => setExpandedInCompact((v) => !v)}
+          iconMuted={iconMuted}
+        />
 
-      <View className="mb-4">
-        <View className="mb-2 flex-row items-center justify-between">
-          <Button variant="ghost" size="sm" onPress={() => onSelectWeekDelta(-1)}>
-            <ChevronLeft size={16} color={iconMuted} />
-            <Text className="text-xs text-muted-foreground">Anterior</Text>
-          </Button>
+        {showCalendar ? (
+          <View className="mt-3 border-t border-border/70 pt-2.5">
+            <View className="mb-2 flex-row items-center justify-between">
+              <Button variant="ghost" size="sm" onPress={() => onSelectWeekDelta(-1)}>
+                <ChevronLeft size={16} color={iconMuted} />
+                <Text className="text-xs text-muted-foreground">Anterior</Text>
+              </Button>
 
-          <Button variant="outline" size="sm" onPress={onJumpToday}>
-            <Text className="text-xs font-semibold">Hoje</Text>
-          </Button>
+              <Button variant="outline" size="sm" onPress={onJumpToday}>
+                <Text className="text-xs font-semibold">Hoje</Text>
+              </Button>
 
-          <Button variant="ghost" size="sm" onPress={() => onSelectWeekDelta(1)}>
-            <Text className="text-xs text-muted-foreground">Próxima</Text>
-            <ChevronRight size={16} color={iconMuted} />
-          </Button>
-        </View>
+              <Button variant="ghost" size="sm" onPress={() => onSelectWeekDelta(1)}>
+                <Text className="text-xs text-muted-foreground">Próxima</Text>
+                <ChevronRight size={16} color={iconMuted} />
+              </Button>
+            </View>
 
-        <View className="flex-row gap-1">
-          {days.map((day) => (
-            <WeekDayPill
-              key={day.dateISO}
-              dateISO={day.dateISO}
-              short={day.short}
-              dayNumber={day.dayNumber}
-              isToday={day.isToday}
-              isSelected={day.dateISO === selectedDate}
-              plannedName={day.plannedName}
-              onSelectDate={onSelectDate}
-            />
-          ))}
-        </View>
-      </View>
-    </>
+            <View className="flex-row gap-1">
+              {days.map((day) => (
+                <WeekDayPill
+                  key={day.dateISO}
+                  dateISO={day.dateISO}
+                  short={day.short}
+                  dayNumber={day.dayNumber}
+                  isToday={day.isToday}
+                  isSelected={day.dateISO === selectedDate}
+                  plannedName={day.plannedName}
+                  onSelectDate={onSelectDate}
+                />
+              ))}
+            </View>
+          </View>
+        ) : null}
+      </CardContent>
+    </Card>
   );
 });

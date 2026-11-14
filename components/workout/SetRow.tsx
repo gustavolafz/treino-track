@@ -202,9 +202,19 @@ export const SetRow = React.memo(function SetRow({
       timerRef.current = null;
     }
     dirtyRef.current = false;
-    const w = parseNumeric(weightStr, true);
-    const r = parseNumeric(repsStr, false);
+    let w = parseNumeric(weightStr, true);
+    let r = parseNumeric(repsStr, false);
     const nextCompleted = !set.completed;
+    if (nextCompleted && prevSet) {
+      if (w <= 0 && prevSet.weightKg > 0) {
+        w = prevSet.weightKg;
+        setWeightStr(String(w));
+      }
+      if (r <= 0 && prevSet.reps > 0) {
+        r = prevSet.reps;
+        setRepsStr(String(r));
+      }
+    }
     triggerNativeHaptic(nextCompleted ? 'confirm' : 'tap');
     onCommit(set.id, { weightKg: w, reps: r, completed: nextCompleted });
     if (nextCompleted) {
@@ -236,7 +246,7 @@ export const SetRow = React.memo(function SetRow({
         keyboardType="decimal-pad"
         textAlign="center"
         textAlignVertical="center"
-        placeholder="0"
+        placeholder={prevSet && prevSet.weightKg > 0 ? String(prevSet.weightKg) : '0'}
         placeholderTextColor={placeholderColor}
         selectTextOnFocus
         style={[styles.inputBase, styles.weightInput, p.input]}
@@ -249,13 +259,13 @@ export const SetRow = React.memo(function SetRow({
         keyboardType="number-pad"
         textAlign="center"
         textAlignVertical="center"
-        placeholder="0"
+        placeholder={prevSet && prevSet.reps > 0 ? String(prevSet.reps) : '0'}
         placeholderTextColor={placeholderColor}
         selectTextOnFocus
         style={[styles.inputBase, styles.repsInput, p.input]}
       />
 
-      <Pressable onPress={handleToggleCompleted} hitSlop={4}>
+      <Pressable onPress={handleToggleCompleted} hitSlop={6}>
         <View style={[styles.checkBtn, set.completed ? p.checkDone : p.checkIdle]}>
           <View style={[styles.checkGlyph, set.completed ? p.glyphDone : p.glyphIdle]} />
         </View>

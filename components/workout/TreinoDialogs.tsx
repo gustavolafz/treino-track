@@ -1,4 +1,4 @@
-import { ChevronRight, Plus } from 'lucide-react-native';
+import { ChevronRight, Plus, TrendingUp, Trophy } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
@@ -362,6 +362,125 @@ export const AddExerciseDialog = React.memo(function AddExerciseDialog({
         </Button>
         <Button onPress={handleConfirm}>
           <Text>Adicionar</Text>
+        </Button>
+      </DialogFooter>
+    </Dialog>
+  );
+});
+
+interface WorkoutCompletedDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  workoutName: string;
+  completedSets: number;
+  totalSets: number;
+  totalReps: number;
+  volumeKg: number;
+  prevVolumeKg: number | null;
+  weekCompleted: number;
+  weekPlanned: number;
+  onViewEvolution: () => void;
+}
+
+export const WorkoutCompletedDialog = React.memo(function WorkoutCompletedDialog({
+  open,
+  onOpenChange,
+  workoutName,
+  completedSets,
+  totalSets,
+  totalReps,
+  volumeKg,
+  prevVolumeKg,
+  weekCompleted,
+  weekPlanned,
+  onViewEvolution,
+}: WorkoutCompletedDialogProps) {
+  const deltaKg = prevVolumeKg !== null ? volumeKg - prevVolumeKg : null;
+  const hitWeekGoal = weekPlanned > 0 && weekCompleted >= weekPlanned;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogHeader>
+        <View className="flex-row items-center gap-2">
+          <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15">
+            <Trophy size={18} color="#10b981" />
+          </View>
+          <View className="flex-1">
+            <DialogTitle>{workoutName} concluído!</DialogTitle>
+            <DialogDescription>
+              Treino salvo no seu histórico e gráficos atualizados.
+            </DialogDescription>
+          </View>
+        </View>
+      </DialogHeader>
+
+      <View className="gap-3">
+        <View className="flex-row gap-2">
+          <View className="flex-1 items-center rounded-xl border border-border bg-secondary/50 p-3">
+            <Text className="text-[11px] text-muted-foreground">Séries</Text>
+            <Text className="mt-0.5 text-base font-bold text-foreground tabular-nums">
+              {completedSets}/{totalSets}
+            </Text>
+          </View>
+          <View className="flex-1 items-center rounded-xl border border-border bg-secondary/50 p-3">
+            <Text className="text-[11px] text-muted-foreground">Reps</Text>
+            <Text className="mt-0.5 text-base font-bold text-foreground tabular-nums">
+              {totalReps}
+            </Text>
+          </View>
+          <View className="flex-1 items-center rounded-xl border border-border bg-secondary/50 p-3">
+            <Text className="text-[11px] text-muted-foreground">Volume</Text>
+            <Text className="mt-0.5 text-base font-bold text-foreground tabular-nums">
+              {volumeKg} kg
+            </Text>
+          </View>
+        </View>
+
+        {deltaKg !== null ? (
+          <View className="flex-row items-center justify-between rounded-xl border border-border bg-card px-3.5 py-2.5">
+            <Text className="text-xs text-muted-foreground">
+              Comparação com último {workoutName}
+            </Text>
+            <Badge variant={deltaKg >= 0 ? 'success' : 'secondary'}>
+              <Text>
+                {deltaKg >= 0 ? `+${deltaKg}` : deltaKg} kg
+              </Text>
+            </Badge>
+          </View>
+        ) : null}
+
+        <View className="flex-row items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5">
+          <Text className="text-xs font-medium text-foreground">
+            {hitWeekGoal
+              ? 'Meta da semana atingida!'
+              : `Meta semanal: faltam ${Math.max(0, weekPlanned - weekCompleted)} treino(s)`}
+          </Text>
+          <Badge variant={hitWeekGoal ? 'success' : 'secondary'}>
+            <Text>
+              {weekCompleted}/{weekPlanned}
+            </Text>
+          </Badge>
+        </View>
+      </View>
+
+      <DialogFooter>
+        <Button
+          variant="outline"
+          className="flex-1 px-3"
+          onPress={() => {
+            onOpenChange(false);
+            onViewEvolution();
+          }}
+        >
+          <TrendingUp size={15} color="#10b981" />
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+            Ver Evolução
+          </Text>
+        </Button>
+        <Button className="flex-1 bg-emerald-600 px-3" onPress={() => onOpenChange(false)}>
+          <Text className="text-white" numberOfLines={1}>
+            Continuar
+          </Text>
         </Button>
       </DialogFooter>
     </Dialog>

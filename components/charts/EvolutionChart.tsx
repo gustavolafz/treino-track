@@ -194,10 +194,11 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
     const lp = lpBuilder.detach();
     const ap = apBuilder.detach();
 
+    const isIntUnit = unit === 'reps';
     const ticks = [0, 0.5, 1].map((t) => {
       const val = yMin + t * ySpan;
       const y = padTop + plotH - t * plotH;
-      return { val: Math.round(val * 10) / 10, y };
+      return { val: isIntUnit ? Math.round(val) : Math.round(val * 10) / 10, y };
     });
 
     return {
@@ -208,7 +209,7 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
       areaPath: ap,
       yTicks: ticks,
     };
-  }, [stats, data, padLeft, padTop, plotW, plotH]);
+  }, [stats, data, unit, padLeft, padTop, plotW, plotH]);
 
   const activeIdxSV = useSharedValue(-1);
   const selectIndexJS = useCallback((idx: number | null) => {

@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { CalendarRange, Cloud, Dumbbell, TrendingUp } from 'lucide-react-native';
+import { CalendarRange, Dumbbell, Settings, TrendingUp } from 'lucide-react-native';
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { triggerNativeHaptic } from '@/modules/treino-native';
@@ -67,8 +67,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="config"
         options={{
-          title: 'Backup',
-          tabBarIcon: ({ color, size }) => <Cloud size={size - 2} color={color} />,
+          title: 'Ajustes',
+          tabBarIcon: ({ color, size }) => <Settings size={size - 2} color={color} />,
         }}
       />
     </Tabs>

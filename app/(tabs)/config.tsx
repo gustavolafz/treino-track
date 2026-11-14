@@ -302,10 +302,10 @@ export default function ConfigScreen() {
       <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 36 }}>
         <View className="py-3">
           <Text className="text-xl font-bold tracking-tight text-foreground">
-            Backup & Configurações
+            Backup & Ajustes
           </Text>
           <Text className="text-xs text-muted-foreground">
-            Salve seus treinos na nuvem (Google Drive) ou em arquivo JSON
+            Exporte seus treinos em JSON, conecte ao Drive ou personalize a aparência
           </Text>
         </View>
 
@@ -327,13 +327,49 @@ export default function ConfigScreen() {
           </View>
         ) : null}
 
-        {/* Google Drive Backup Card */}
+        {/* Local File Backup (Primary instant offline backup) */}
         <Card className="mb-3">
           <CardHeader>
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center gap-2">
+            <CardTitle>Backup Rápido em Arquivo (.json)</CardTitle>
+            <CardDescription>
+              Exporte na hora para salvar no Google Drive pelo menu de compartilhamento ou no computador, e importe ao trocar de aparelho.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="gap-2.5">
+            <View className="flex-row gap-2">
+              <Button
+                className="flex-1"
+                disabled={localBusy}
+                onPress={handleLocalExport}
+              >
+                <Upload size={15} color={isDark ? '#18181b' : '#fafafa'} />
+                <Text>Exportar JSON</Text>
+              </Button>
+              <Button
+                variant="outline"
+                className="flex-1"
+                disabled={localBusy}
+                onPress={handleLocalImport}
+              >
+                <Download size={15} color={iconPrimary} />
+                <Text>Importar JSON</Text>
+              </Button>
+            </View>
+            {backupConfig.lastBackupAt && backupConfig.lastBackupTarget !== 'google_drive' ? (
+              <Text className="text-[11px] text-muted-foreground">
+                Último backup local: {new Date(backupConfig.lastBackupAt).toLocaleString('pt-BR')}
+              </Text>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Google Drive Direct Sync (Advanced / OAuth) */}
+        <Card className="mb-3">
+          <CardHeader>
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-1 flex-row items-center gap-2">
                 <Cloud size={18} color="#3b82f6" />
-                <CardTitle>Backup no Google Drive</CardTitle>
+                <CardTitle>Google Drive Direto (Avançado)</CardTitle>
               </View>
               <Button
                 variant="outline"
@@ -350,7 +386,7 @@ export default function ConfigScreen() {
               </Button>
             </View>
             <CardDescription>
-              Sincroniza todas as divisões, treinos, séries/reps e peso/BF em um arquivo treino-track-backup.json no seu Google Drive.
+              Opcional: sincronize treino-track-backup.json diretamente usando seu próprio OAuth Client ID.
             </CardDescription>
           </CardHeader>
 
@@ -363,65 +399,31 @@ export default function ConfigScreen() {
                 onStatusMessage={showStatus}
               />
             ) : (
-              <View className="rounded-lg border border-dashed border-border p-3.5">
-                <Text className="text-xs font-semibold text-foreground">
-                  Configure seu Google OAuth Client ID
-                </Text>
-                <Text className="mt-1 text-xs text-muted-foreground">
-                  Para habilitar o login direto com Google Drive no seu app próprio, cole seu Client ID do Google Cloud Console (escopo drive.file) no botão &ldquo;Client ID&rdquo; acima.
-                </Text>
+              <View className="flex-row items-center justify-between gap-3 rounded-lg border border-dashed border-border p-3">
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold text-foreground">
+                    Sync direto não configurado
+                  </Text>
+                  <Text className="mt-0.5 text-[11px] text-muted-foreground">
+                    Para uso pessoal comum, o botão Exportar JSON acima já salva no Drive.
+                  </Text>
+                </View>
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="mt-3 self-start"
                   onPress={() => setClientDialogOpen(true)}
                 >
-                  <KeyRound size={14} color={iconPrimary} />
-                  <Text>Inserir Client ID</Text>
+                  <KeyRound size={13} color={iconPrimary} />
+                  <Text>Configurar</Text>
                 </Button>
               </View>
             )}
 
-            {backupConfig.lastBackupAt ? (
+            {backupConfig.lastBackupAt && backupConfig.lastBackupTarget === 'google_drive' ? (
               <Text className="text-[11px] text-muted-foreground">
-                Último backup:{' '}
-                {new Date(backupConfig.lastBackupAt).toLocaleString('pt-BR')} (
-                {backupConfig.lastBackupTarget === 'google_drive'
-                  ? 'Google Drive'
-                  : 'Arquivo Local'}
-                )
+                Último sync Drive: {new Date(backupConfig.lastBackupAt).toLocaleString('pt-BR')}
               </Text>
             ) : null}
-          </CardContent>
-        </Card>
-
-        {/* Local File Backup (Always Available, can be saved into Drive app on phone) */}
-        <Card className="mb-3">
-          <CardHeader>
-            <CardTitle>Backup em Arquivo (.json)</CardTitle>
-            <CardDescription>
-              Exporte para salvar no Drive pelo menu de compartilhamento do celular ou no computador, e importe quando trocar de aparelho.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex-row gap-2">
-            <Button
-              variant="secondary"
-              className="flex-1"
-              disabled={localBusy}
-              onPress={handleLocalExport}
-            >
-              <Upload size={15} color={iconPrimary} />
-              <Text>Exportar JSON</Text>
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1"
-              disabled={localBusy}
-              onPress={handleLocalImport}
-            >
-              <Download size={15} color={iconPrimary} />
-              <Text>Importar JSON</Text>
-            </Button>
           </CardContent>
         </Card>
 

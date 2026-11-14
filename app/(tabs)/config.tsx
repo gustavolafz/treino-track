@@ -1,0 +1,518 @@
+import * as Google from 'expo-auth-session/providers/google';
+import * as WebBrowser from 'expo-web-browser';
+import {
+  CheckCircle2,
+  Cloud,
+  CloudDownload,
+  CloudUpload,
+  Download,
+  KeyRound,
+  Moon,
+  RefreshCw,
+  Sun,
+  Trash2,
+  Upload,
+} from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, Alert, Platform, ScrollView, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import {
+  Badge,
+  Button,
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+  Dialog,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Input,
+  Label,
+  Separator,
+  Text,
+} from '@/components/ui';
+import {
+  exportBackupToLocalFile,
+  fetchGoogleUserEmail,
+  GOOGLE_DRIVE_SCOPES,
+  importBackupFromLocalFile,
+  restoreBackupFromGoogleDrive,
+  uploadBackupToGoogleDrive,
+} from '@/lib/backupService';
+import { useAppStore } from '@/store/AppContext';
+
+WebBrowser.maybeCompleteAuthSession();
+
+function GoogleDriveAuthPanel({
+  webClientId,
+  androidClientId,
+  iosClientId,
+  onStatusMessage,
+}: {
+  webClientId: string;
+  androidClientId: string;
+  iosClientId: string;
+  onStatusMessage: (msg: string, isError?: boolean) => void;
+}) {
+  const { state, updateBackupConfig, replaceAllData } = useAppStore();
+  const [busy, setBusy] = useState(false);
+
+  const [request, response, promptAsync] = Google.useAuthRequest({
+    webClientId: webClientId || undefined,
+    androidClientId: androidClientId || undefined,
+    iosClientId: iosClientId || undefined,
+    scopes: GOOGLE_DRIVE_SCOPES,
+  });
+
+  const accessToken =
+    response?.type === 'success' ? response.authentication?.accessToken ?? null : null;
+
+  useEffect(() => {
+    if (response?.type === 'success' && accessToken) {
+      fetchGoogleUserEmail(accessToken)
+        .then((email) => {
+          if (email) {
+            updateBackupConfig({ connectedEmail: email });
+          }
+          onStatusMessage(
+            email
+              ? `Conectado ao Google Drive como ${email}.`
+              : 'Conectado ao Google Drive.'
+          );
+        })
+        .catch(() => {
+          onStatusMessage('Conectado ao Google Drive.');
+        });
+    } else if (response?.type === 'error') {
+      onStatusMessage('Falha na autenticação com o Google.', true);
+    }
+  }, [accessToken, onStatusMessage, response?.type, updateBackupConfig]);
+
+  const handleDriveUpload = async () => {
+    if (!accessToken) {
+      await promptAsync();
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await uploadBackupToGoogleDrive(accessToken, state);
+      updateBackupConfig({
+        lastBackupAt: res.updatedAt,
+        lastBackupTarget: 'google_drive',
+      });
+      onStatusMessage('Backup enviado com sucesso para o seu Google Drive!');
+    } catch (err: any) {
+      onStatusMessage(err?.message ?? 'Erro ao enviar backup para o Drive.', true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleDriveRestore = async () => {
+    if (!accessToken) {
+      await promptAsync();
+      return;
+    }
+    setBusy(true);
+    try {
+      const { data } = await restoreBackupFromGoogleDrive(accessToken);
+      replaceAllData({
+        ...data,
+        backupConfig: state.backupConfig,
+      });
+      onStatusMessage('Dados restaurados do Google Drive com sucesso!');
+    } catch (err: any) {
+      onStatusMessage(err?.message ?? 'Erro ao restaurar do Drive.', true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <View className="gap-2.5">
+      <View className="flex-row items-center justify-between rounded-lg border border-border bg-background/60 p-3">
+        <View className="flex-1">
+          <Text className="text-xs font-semibold text-foreground">
+            {accessToken ? 'Sessão Google Drive Ativa' : 'Pronto para conectar'}
+          </Text>
+          <Text className="text-[11px] text-muted-foreground">
+            {state.backupConfig.connectedEmail
+              ? `Conta: ${state.backupConfig.connectedEmail}`
+              : 'Faça login para salvar e restaurar no Drive'}
+          </Text>
+        </View>
+        <Badge variant={accessToken ? 'success' : 'secondary'}>
+          <Text>{accessToken ? 'Conectado' : 'Desconectado'}</Text>
+        </Badge>
+      </View>
+
+      {!accessToken ? (
+        <Button disabled={!request || busy} onPress={() => promptAsync()}>
+          <Cloud size={16} color="#18181b" />
+          <Text>Conectar com Google</Text>
+        </Button>
+      ) : (
+        <View className="flex-row gap-2">
+          <Button className="flex-1" disabled={busy} onPress={handleDriveUpload}>
+            {busy ? (
+              <ActivityIndicator size="small" />
+            ) : (
+              <CloudUpload size={16} color="#18181b" />
+            )}
+            <Text>Enviar pro Drive</Text>
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1"
+            disabled={busy}
+            onPress={handleDriveRestore}
+          >
+            <CloudDownload size={16} color="#10b981" />
+            <Text>Restaurar</Text>
+          </Button>
+        </View>
+      )}
+    </View>
+  );
+}
+
+export default function ConfigScreen() {
+  const {
+    state,
+    toggleTheme,
+    updateBackupConfig,
+    replaceAllData,
+    clearDemoData,
+    reloadDemoData,
+  } = useAppStore();
+
+  const isDark = state.themePreference === 'dark';
+  const iconPrimary = isDark ? '#fafafa' : '#18181b';
+
+  const [statusBanner, setStatusBanner] = useState<{
+    text: string;
+    isError?: boolean;
+  } | null>(null);
+  const [localBusy, setLocalBusy] = useState(false);
+
+  // Client ID config modal
+  const [clientDialogOpen, setClientDialogOpen] = useState(false);
+  const [webId, setWebId] = useState(state.backupConfig.googleWebClientId);
+  const [androidId, setAndroidId] = useState(state.backupConfig.googleAndroidClientId);
+  const [iosId, setIosId] = useState(state.backupConfig.googleIosClientId);
+
+  const hasPlatformClientId = Boolean(
+    Platform.select({
+      web: state.backupConfig.googleWebClientId,
+      android: state.backupConfig.googleAndroidClientId || state.backupConfig.googleWebClientId,
+      ios: state.backupConfig.googleIosClientId || state.backupConfig.googleWebClientId,
+      default: state.backupConfig.googleWebClientId,
+    })
+  );
+
+  const showStatus = (text: string, isError = false) => {
+    setStatusBanner({ text, isError });
+  };
+
+  const handleLocalExport = async () => {
+    setLocalBusy(true);
+    try {
+      await exportBackupToLocalFile(state);
+      updateBackupConfig({
+        lastBackupAt: new Date().toISOString(),
+        lastBackupTarget: 'local_file',
+      });
+      showStatus('Backup JSON exportado com sucesso!');
+    } catch (err: any) {
+      showStatus(err?.message ?? 'Erro ao exportar arquivo.', true);
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const handleLocalImport = async () => {
+    setLocalBusy(true);
+    try {
+      const imported = await importBackupFromLocalFile();
+      if (!imported) {
+        setLocalBusy(false);
+        return;
+      }
+      replaceAllData(imported);
+      showStatus('Backup JSON importado e restaurado com sucesso!');
+    } catch (err: any) {
+      showStatus(err?.message ?? 'Arquivo de backup inválido.', true);
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const handleSaveClientIds = () => {
+    updateBackupConfig({
+      googleWebClientId: webId.trim(),
+      googleAndroidClientId: androidId.trim(),
+      googleIosClientId: iosId.trim(),
+    });
+    setClientDialogOpen(false);
+    showStatus('Credenciais OAuth do Google salvas.');
+  };
+
+  const confirmClearDemo = () => {
+    if (Platform.OS === 'web') {
+      clearDemoData();
+      showStatus('Dados zerados! Agora você começa do zero.');
+      return;
+    }
+    Alert.alert(
+      'Zerar dados de exemplo?',
+      'Isso remove os treinos e medições de demonstração e mantém uma rotina limpa para você começar.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Zerar tudo',
+          style: 'destructive',
+          onPress: () => {
+            clearDemoData();
+            showStatus('Dados zerados com sucesso!');
+          },
+        },
+      ]
+    );
+  };
+
+  return (
+    <SafeAreaView className="flex-1 bg-background" edges={['top']}>
+      <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 36 }}>
+        <View className="py-3">
+          <Text className="text-xl font-bold tracking-tight text-foreground">
+            Backup & Configurações
+          </Text>
+          <Text className="text-xs text-muted-foreground">
+            Salve seus treinos na nuvem (Google Drive) ou em arquivo JSON
+          </Text>
+        </View>
+
+        {statusBanner ? (
+          <View
+            className={`mb-3 flex-row items-center gap-2 rounded-xl border p-3 ${
+              statusBanner.isError
+                ? 'border-destructive/40 bg-destructive/15'
+                : 'border-emerald-500/40 bg-emerald-500/15'
+            }`}
+          >
+            <CheckCircle2
+              size={16}
+              color={statusBanner.isError ? '#ef4444' : '#10b981'}
+            />
+            <Text className="flex-1 text-xs font-medium text-foreground">
+              {statusBanner.text}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* Google Drive Backup Card */}
+        <Card className="mb-3">
+          <CardHeader>
+            <View className="flex-row items-center justify-between">
+              <View className="flex-row items-center gap-2">
+                <Cloud size={18} color="#3b82f6" />
+                <CardTitle>Backup no Google Drive</CardTitle>
+              </View>
+              <Button
+                variant="outline"
+                size="sm"
+                onPress={() => {
+                  setWebId(state.backupConfig.googleWebClientId);
+                  setAndroidId(state.backupConfig.googleAndroidClientId);
+                  setIosId(state.backupConfig.googleIosClientId);
+                  setClientDialogOpen(true);
+                }}
+              >
+                <KeyRound size={13} color={iconPrimary} />
+                <Text>Client ID</Text>
+              </Button>
+            </View>
+            <CardDescription>
+              Sincroniza todas as divisões, treinos, séries/reps e peso/BF em um arquivo treino-track-backup.json no seu Google Drive.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="gap-3">
+            {hasPlatformClientId ? (
+              <GoogleDriveAuthPanel
+                webClientId={state.backupConfig.googleWebClientId}
+                androidClientId={state.backupConfig.googleAndroidClientId}
+                iosClientId={state.backupConfig.googleIosClientId}
+                onStatusMessage={showStatus}
+              />
+            ) : (
+              <View className="rounded-lg border border-dashed border-border p-3.5">
+                <Text className="text-xs font-semibold text-foreground">
+                  Configure seu Google OAuth Client ID
+                </Text>
+                <Text className="mt-1 text-xs text-muted-foreground">
+                  Para habilitar o login direto com Google Drive no seu app próprio, cole seu Client ID do Google Cloud Console (escopo drive.file) no botão &ldquo;Client ID&rdquo; acima.
+                </Text>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3 self-start"
+                  onPress={() => setClientDialogOpen(true)}
+                >
+                  <KeyRound size={14} color={iconPrimary} />
+                  <Text>Inserir Client ID</Text>
+                </Button>
+              </View>
+            )}
+
+            {state.backupConfig.lastBackupAt ? (
+              <Text className="text-[11px] text-muted-foreground">
+                Último backup:{' '}
+                {new Date(state.backupConfig.lastBackupAt).toLocaleString('pt-BR')} (
+                {state.backupConfig.lastBackupTarget === 'google_drive'
+                  ? 'Google Drive'
+                  : 'Arquivo Local'}
+                )
+              </Text>
+            ) : null}
+          </CardContent>
+        </Card>
+
+        {/* Local File Backup (Always Available, can be saved into Drive app on phone) */}
+        <Card className="mb-3">
+          <CardHeader>
+            <CardTitle>Backup em Arquivo (.json)</CardTitle>
+            <CardDescription>
+              Exporte para salvar no Drive pelo menu de compartilhamento do celular ou no computador, e importe quando trocar de aparelho.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex-row gap-2">
+            <Button
+              variant="secondary"
+              className="flex-1"
+              disabled={localBusy}
+              onPress={handleLocalExport}
+            >
+              <Upload size={15} color={iconPrimary} />
+              <Text>Exportar JSON</Text>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              disabled={localBusy}
+              onPress={handleLocalImport}
+            >
+              <Download size={15} color={iconPrimary} />
+              <Text>Importar JSON</Text>
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Appearance & App Data */}
+        <Card className="mb-3">
+          <CardHeader>
+            <CardTitle>Aparência & Dados</CardTitle>
+            <CardDescription>
+              {state.splits.length} divisões • {state.logs.length} dias registrados •{' '}
+              {state.bodyMetrics.length} medições corporais
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="gap-3">
+            <View className="flex-row items-center justify-between">
+              <View>
+                <Text className="text-sm font-semibold text-foreground">
+                  Tema do Aplicativo
+                </Text>
+                <Text className="text-xs text-muted-foreground">
+                  {isDark ? 'Modo Escuro (Zinc Dark)' : 'Modo Claro (Zinc Light)'}
+                </Text>
+              </View>
+              <Button variant="outline" size="sm" onPress={toggleTheme}>
+                {isDark ? (
+                  <Sun size={14} color={iconPrimary} />
+                ) : (
+                  <Moon size={14} color={iconPrimary} />
+                )}
+                <Text>{isDark ? 'Claro' : 'Escuro'}</Text>
+              </Button>
+            </View>
+
+            <Separator />
+
+            <View className="flex-row gap-2">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onPress={() => {
+                  reloadDemoData();
+                  showStatus('Dados de exemplo recarregados.');
+                }}
+              >
+                <RefreshCw size={14} color={iconPrimary} />
+                <Text>Exemplo PPLUL</Text>
+              </Button>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                onPress={confirmClearDemo}
+              >
+                <Trash2 size={14} color="#ffffff" />
+                <Text className="text-white">Zerar Dados</Text>
+              </Button>
+            </View>
+          </CardContent>
+        </Card>
+      </ScrollView>
+
+      {/* Dialog: Google OAuth Client ID Setup */}
+      <Dialog open={clientDialogOpen} onOpenChange={setClientDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Configurar Google Drive OAuth</DialogTitle>
+          <DialogDescription>
+            Crie um OAuth 2.0 Client ID no Google Cloud Console com a Google Drive API ativada e cole aqui.
+          </DialogDescription>
+        </DialogHeader>
+        <View className="gap-3">
+          <View>
+            <Label>Web Client ID (Web / Expo Auth)</Label>
+            <Input
+              value={webId}
+              onChangeText={setWebId}
+              placeholder="xxxxx.apps.googleusercontent.com"
+              autoCapitalize="none"
+            />
+          </View>
+          <View>
+            <Label>Android Client ID (opcional)</Label>
+            <Input
+              value={androidId}
+              onChangeText={setAndroidId}
+              placeholder="xxxxx.apps.googleusercontent.com"
+              autoCapitalize="none"
+            />
+          </View>
+          <View>
+            <Label>iOS Client ID (opcional)</Label>
+            <Input
+              value={iosId}
+              onChangeText={setIosId}
+              placeholder="xxxxx.apps.googleusercontent.com"
+              autoCapitalize="none"
+            />
+          </View>
+        </View>
+        <DialogFooter>
+          <Button variant="outline" onPress={() => setClientDialogOpen(false)}>
+            <Text>Cancelar</Text>
+          </Button>
+          <Button onPress={handleSaveClientIds}>
+            <Text>Salvar</Text>
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </SafeAreaView>
+  );
+}

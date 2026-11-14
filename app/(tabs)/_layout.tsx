@@ -1,68 +1,66 @@
-import { SymbolView } from 'expo-symbols';
-import { Link, Tabs } from 'expo-router';
-import { Platform, Pressable } from 'react-native';
-
-import Colors from '@/constants/Colors';
-import { useColorScheme } from '@/components/useColorScheme';
-import { useClientOnlyValue } from '@/components/useClientOnlyValue';
+import { Tabs } from 'expo-router';
+import { CalendarRange, Cloud, Dumbbell, TrendingUp } from 'lucide-react-native';
+import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAppStore } from '@/store/AppContext';
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  const { state } = useAppStore();
+  const isDark = state.themePreference === 'dark';
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 10);
+
+  const bg = isDark ? '#09090b' : '#ffffff';
+  const border = isDark ? '#27272a' : '#e4e4e7';
+  const active = isDark ? '#fafafa' : '#18181b';
+  const inactive = isDark ? '#71717a' : '#a1a1aa';
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
-      }}>
+        headerShown: false,
+        tabBarActiveTintColor: active,
+        tabBarInactiveTintColor: inactive,
+        tabBarStyle: {
+          backgroundColor: bg,
+          borderTopColor: border,
+          borderTopWidth: 1,
+          height: 58 + bottomPad,
+          paddingBottom: bottomPad,
+          paddingTop: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
-          title: 'Tab One',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
-          headerRight: () => (
-            <Link href="/modal" asChild>
-              <Pressable style={{ marginRight: 15 }}>
-                {({ pressed }) => (
-                  <SymbolView
-                    name={{ ios: 'info.circle', android: 'info', web: 'info' }}
-                    size={25}
-                    tintColor={Colors[colorScheme].text}
-                    style={{ opacity: pressed ? 0.5 : 1 }}
-                  />
-                )}
-              </Pressable>
-            </Link>
-          ),
+          title: 'Treino',
+          tabBarIcon: ({ color, size }) => <Dumbbell size={size - 2} color={color} />,
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="rotina"
         options={{
-          title: 'Tab Two',
-          tabBarIcon: ({ color }) => (
-            <SymbolView
-              name={{
-                ios: 'chevron.left.forwardslash.chevron.right',
-                android: 'code',
-                web: 'code',
-              }}
-              tintColor={color}
-              size={28}
-            />
-          ),
+          title: 'Rotina',
+          tabBarIcon: ({ color, size }) => <CalendarRange size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="evolucao"
+        options={{
+          title: 'Evolução',
+          tabBarIcon: ({ color, size }) => <TrendingUp size={size - 2} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="config"
+        options={{
+          title: 'Backup',
+          tabBarIcon: ({ color, size }) => <Cloud size={size - 2} color={color} />,
         }}
       />
     </Tabs>

@@ -8,7 +8,7 @@ import type {
   WorkoutTemplate,
 } from '@/types/workout';
 
-export type PresetSplitKey = 'pplul' | 'pplx2' | 'fullbody' | 'upper_lower' | 'custom';
+export type PresetSplitKey = 'pplul' | 'ppl' | 'pplx2' | 'fullbody' | 'upper_lower' | 'custom';
 
 function ex(
   name: string,
@@ -64,7 +64,7 @@ export function createPresetSplit(preset: PresetSplitKey, todayISO = toISODate(n
         ex('Mesa Flexora', 'Posterior', 2, '5-9', 120, 45),
         ex('Agachamento Pêndulo', 'Quadríceps', 2, '5-9', 180, 60),
         ex('Elevação de Quadril na Máquina', 'Glúteos', 2, '5-9', 120, 90),
-        ex('Cadeira Extensora Unilateral', 'Quadríceps', 2, '5-9', 120, 40),
+        ex('Cadeira Extensora', 'Quadríceps', 2, '5-9', 120, 40),
       ],
     };
     const upper: WorkoutTemplate = {
@@ -89,7 +89,7 @@ export function createPresetSplit(preset: PresetSplitKey, todayISO = toISODate(n
         ex('Leg Press 45', 'Pernas', 2, '5-9', 180, 180),
         ex('Adução de Quadril Máquina', 'Adutores', 2, '5-9', 120, 55),
         ex('Abdução de Quadril Máquina', 'Glúteos', 2, '5-9', 120, 60),
-        ex('Cadeira Extensora Unilateral', 'Quadríceps', 2, '5-9', 120, 40),
+        ex('Cadeira Extensora', 'Quadríceps', 2, '5-9', 120, 40),
       ],
     };
     return {
@@ -99,6 +99,7 @@ export function createPresetSplit(preset: PresetSplitKey, todayISO = toISODate(n
       status: 'active',
       startedAt: todayISO,
       workouts: [pull, push, legs, upper, lower],
+      scheduleMode: 'weekly',
       weeklySchedule: {
         1: pull.id,
         2: push.id,
@@ -111,92 +112,115 @@ export function createPresetSplit(preset: PresetSplitKey, todayISO = toISODate(n
     };
   }
 
-  if (preset === 'pplx2') {
-    const pushA: WorkoutTemplate = {
+  if (preset === 'ppl' || preset === 'pplx2') {
+    const push: WorkoutTemplate = {
       id: createId('wk'),
-      name: 'Push A',
+      name: 'Push',
       accent: 'blue',
       exercises: [
-        ex('Supino Reto Barra', 'Peito', 3, '6-8', 120, 75),
-        ex('Desenvolvimento Barra', 'Ombros', 2, '6-10', 120, 45),
-        ex('Tríceps Testa', 'Tríceps', 2, '8-12', 120, 28),
+        ex('Supino Reto Articulado', 'Peito', 3, '3-7', 180),
+        ex('Supino Inclinado Articulado', 'Peito', 3, '3-7', 180),
+        ex('Crossover Polia Alta', 'Peito', 3, '3-7', 180),
+        ex('Desenvolvimento Halteres', 'Ombros', 2, '3-7', 180),
+        ex('Elevação Lateral com Halteres', 'Ombros', 2, '3-7', 120, 12),
+        ex('Tríceps Francês', 'Tríceps', 3, '3-7', 120),
+        ex('Tríceps Máquina', 'Tríceps', 2, '3-7', 120),
       ],
     };
-    const pullA: WorkoutTemplate = {
+    const pull: WorkoutTemplate = {
       id: createId('wk'),
-      name: 'Pull A',
+      name: 'Pull',
       accent: 'emerald',
       exercises: [
-        ex('Barra Fixa', 'Costas', 3, '6-10', 120, 0),
-        ex('Remada Baixa', 'Costas', 2, '8-10', 120, 60),
-        ex('Rosca Alternada', 'Bíceps', 2, '8-12', 120, 14),
+        ex('Puxada Aberta Barra Reta', 'Costas', 3, '3-7', 180, 65),
+        ex('Remada Baixa Triângulo', 'Costas', 3, '3-7', 180),
+        ex('Pulldown Barra Reta', 'Costas', 3, '3-7', 180),
+        ex('Posterior de Ombro na Polia', 'Posterior Ombro', 3, '3-7', 120),
+        ex('Rosca Inclinada 45°', 'Bíceps', 3, '3-7', 120),
+        ex('Rosca Martelo Sentado com Halteres', 'Bíceps', 2, '3-7', 120, 14),
+        ex('Rosca Inversa', 'Antebraço/Bíceps', 3, '3-7', 120),
       ],
     };
-    const legsA: WorkoutTemplate = {
+    const legs: WorkoutTemplate = {
       id: createId('wk'),
-      name: 'Legs A',
+      name: 'Legs',
       accent: 'violet',
       exercises: [
-        ex('Agachamento Livre', 'Pernas', 3, '5-8', 180, 95),
-        ex('Stiff', 'Posterior', 2, '6-10', 180, 80),
-        ex('Panturrilha em Pé', 'Panturrilha', 3, '10-15', 90, 55),
+        ex('Agachamento Livre', 'Quadríceps', 3, '3-7', 180),
+        ex('Stiff Pés Próximos com Barra Livre', 'Posterior', 3, '3-7', 180, 80),
+        ex('Cadeira Extensora', 'Quadríceps', 3, '3-7', 120, 40),
+        ex('Mesa Flexora', 'Posterior', 3, '3-7', 120, 45),
+        ex('Abdução de Quadril Máquina', 'Glúteos', 3, '3-7', 120, 60),
+        ex('Adução de Quadril Máquina', 'Adutores', 3, '3-7', 120, 55),
       ],
     };
     return {
       id: createId('split'),
-      name: 'PPLx2',
-      description: 'Push • Pull • Legs 2x na semana (6x/sem)',
+      name: 'PPL',
+      description: 'Push → Pull → Legs → Descanso (ciclo contínuo de 4 dias)',
       status: 'active',
       startedAt: todayISO,
-      workouts: [pushA, pullA, legsA],
+      scheduleMode: 'cycle',
+      cycleSequence: [push.id, pull.id, legs.id, null],
+      workouts: [push, pull, legs],
       weeklySchedule: {
-        1: pushA.id,
-        2: pullA.id,
-        3: legsA.id,
-        4: pushA.id,
-        5: pullA.id,
-        6: legsA.id,
-        0: null,
+        1: push.id,
+        2: pull.id,
+        3: legs.id,
+        4: null,
+        5: push.id,
+        6: pull.id,
+        0: legs.id,
       },
     };
   }
 
   if (preset === 'fullbody') {
-    const fbA: WorkoutTemplate = {
+    const diaA: WorkoutTemplate = {
       id: createId('wk'),
-      name: 'Full Body A',
+      name: 'Dia A',
       accent: 'emerald',
       exercises: [
-        ex('Agachamento Livre', 'Pernas', 3, '6-8', 180, 90),
-        ex('Supino Reto Barra', 'Peito', 3, '8-10', 120, 72),
-        ex('Remada Curvada', 'Costas', 3, '8-10', 120, 65),
-        ex('Elevação Lateral', 'Ombros', 3, '12-15', 90, 10),
+        ex('Supino Reto Articulado', 'Peito', 3, '3-7', 180),
+        ex('Puxada Aberta Barra Reta', 'Costas', 3, '3-7', 180, 65),
+        ex('Agachamento Livre', 'Quadríceps', 3, '3-7', 180),
       ],
     };
-    const fbB: WorkoutTemplate = {
+    const diaB: WorkoutTemplate = {
       id: createId('wk'),
-      name: 'Full Body B',
+      name: 'Dia B',
       accent: 'blue',
       exercises: [
-        ex('Levantamento Terra Romeno', 'Posterior', 3, '8-10', 180, 85),
-        ex('Desenvolvimento Halteres', 'Ombros', 3, '8-10', 120, 20),
-        ex('Puxada Frontal', 'Costas', 3, '8-12', 120, 60),
-        ex('Rosca Direta', 'Bíceps', 2, '10-12', 90, 28),
+        ex('Puxada Aberta Barra Reta', 'Costas', 3, '3-7', 180, 65),
+        ex('Agachamento Livre', 'Quadríceps', 3, '3-7', 180),
+        ex('Supino Reto Articulado', 'Peito', 3, '3-7', 180),
+      ],
+    };
+    const diaC: WorkoutTemplate = {
+      id: createId('wk'),
+      name: 'Dia C',
+      accent: 'violet',
+      exercises: [
+        ex('Agachamento Livre', 'Quadríceps', 3, '3-7', 180),
+        ex('Supino Reto Articulado', 'Peito', 3, '3-7', 180),
+        ex('Puxada Aberta Barra Reta', 'Costas', 3, '3-7', 180, 65),
       ],
     };
     return {
       id: createId('split'),
       name: 'Full Body',
-      description: 'Corpo inteiro 3x na semana (Seg • Qua • Sex)',
+      description: 'Dia A → Descanso → Dia B → Descanso → Dia C → Descanso (ciclo de 6 dias)',
       status: 'active',
       startedAt: todayISO,
-      workouts: [fbA, fbB],
+      scheduleMode: 'cycle',
+      cycleSequence: [diaA.id, null, diaB.id, null, diaC.id, null],
+      workouts: [diaA, diaB, diaC],
       weeklySchedule: {
-        1: fbA.id,
+        1: diaA.id,
         2: null,
-        3: fbB.id,
+        3: diaB.id,
         4: null,
-        5: fbA.id,
+        5: diaC.id,
         6: null,
         0: null,
       },
@@ -274,9 +298,9 @@ export function buildInitialDemoData(): AppDataState {
   const today = toISODate(new Date());
 
   const pplul = createPresetSplit('pplul', addDaysISO(today, -28));
-  const pplx2 = createPresetSplit('pplx2', addDaysISO(today, -95));
-  pplx2.status = 'past';
-  pplx2.endedAt = addDaysISO(today, -29);
+  const ppl = createPresetSplit('ppl', addDaysISO(today, -95));
+  ppl.status = 'past';
+  ppl.endedAt = addDaysISO(today, -29);
 
   const fullBody = createPresetSplit('fullbody', addDaysISO(today, -160));
   fullBody.status = 'past';
@@ -361,7 +385,7 @@ export function buildInitialDemoData(): AppDataState {
     version: 2,
     themePreference: 'light',
     isDemoSeeded: true,
-    splits: [pplul, pplx2, fullBody],
+    splits: [pplul, ppl, fullBody],
     logs,
     bodyMetrics,
     backupConfig: {

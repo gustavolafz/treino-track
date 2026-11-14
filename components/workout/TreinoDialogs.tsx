@@ -19,7 +19,11 @@ import {
   getWeekdayCached,
 } from '@/lib/dateCache';
 import { queryCompletedExercisesWithCountSync } from '@/lib/database';
-import { rotateScheduleByDays } from '@/lib/schedule';
+import {
+  getPlannedWorkoutIdForDate,
+  rotateScheduleByDays,
+  shiftCycleStartDate,
+} from '@/lib/schedule';
 import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import type { TrainingSplit } from '@/types/workout';
 
@@ -62,18 +66,27 @@ export const SkipDayDialog = React.memo(function SkipDayDialog({
 
   const rotationPreview = useMemo(() => {
     if (!open || skipMode !== 'rotate') return [];
-    const rotated = rotateScheduleByDays(activeSplit.weeklySchedule, 1);
+    const rotatedSplit: TrainingSplit =
+      activeSplit.scheduleMode === 'cycle' && activeSplit.cycleSequence
+        ? {
+            ...activeSplit,
+            startedAt: shiftCycleStartDate(activeSplit.startedAt, 1),
+          }
+        : {
+            ...activeSplit,
+            weeklySchedule: rotateScheduleByDays(activeSplit.weeklySchedule, 1),
+          };
     return [1, 2, 3, 4].map((offset) => {
       const dISO = addDaysCached(selectedDate, offset);
       const wd = getWeekdayCached(dISO) as WeekdayIndex;
-      const wkId = rotated[wd];
+      const wkId = getPlannedWorkoutIdForDate(rotatedSplit, dISO);
       const wkName = wkId
         ? activeSplit.workouts.find((w) => w.id === wkId)?.name ?? 'Treino'
         : 'Descanso';
       const dayShort = WEEKDAYS_MON_SUN.find((w) => w.day === wd)?.short ?? '';
       return { dateISO: dISO, dayShort, wkName };
     });
-  }, [activeSplit.weeklySchedule, activeSplit.workouts, open, selectedDate, skipMode]);
+  }, [activeSplit, open, selectedDate, skipMode]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

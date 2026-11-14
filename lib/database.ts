@@ -1,6 +1,7 @@
 import { openDatabaseSync, type SQLiteDatabase } from 'expo-sqlite';
 import { computeSetSeriesFast } from '@/modules/treino-native';
 import { formatShortDateCached } from '@/lib/dateCache';
+import { createPresetSplit } from '@/lib/seedData';
 import { WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import type {
   AccentTag,
@@ -8,6 +9,7 @@ import type {
   ExerciseLog,
   ExerciseTemplate,
   SetLog,
+  SplitScheduleMode,
   TrainingSplit,
   WorkoutDayStatus,
   WorkoutLog,
@@ -41,7 +43,14 @@ export function initDatabaseSync(): void {
       status TEXT NOT NULL DEFAULT 'active',
       started_at TEXT NOT NULL,
       ended_at TEXT,
+      schedule_mode TEXT NOT NULL DEFAULT 'weekly',
+      cycle_sequence_json TEXT,
       position INTEGER NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY NOT NULL,
+      value TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS workouts (
@@ -131,7 +140,83 @@ export function initDatabaseSync(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_bm_date ON body_metrics(date DESC);
   `);
+
+  const splitCols = db.getAllSync<{ name: string }>('PRAGMA table_info(splits)');
+  if (!splitCols.some((c) => c.name === 'schedule_mode')) {
+    db.execSync("ALTER TABLE splits ADD COLUMN schedule_mode TEXT NOT NULL DEFAULT 'weekly'");
+  }
+  if (!splitCols.some((c) => c.name === 'cycle_sequence_json')) {
+    db.execSync('ALTER TABLE splits ADD COLUMN cycle_sequence_json TEXT');
+  }
+
+  runPendingSqliteMigrations(db);
   schemaReady = true;
+}
+
+function runPendingSqliteMigrations(db: SQLiteDatabase): void {
+  const alreadyMigrated = db.getFirstSync<{ value: string }>(
+    "SELECT value FROM app_meta WHERE key = 'migration_v3_splits_done'"
+  );
+  if (alreadyMigrated) return;
+
+  const countRow = db.getFirstSync<{ cnt: number }>('SELECT COUNT(*) AS cnt FROM splits');
+  if ((countRow?.cnt ?? 0) === 0) {
+    db.runSync(
+      "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('migration_v3_splits_done', '1')"
+    );
+    return;
+  }
+
+  db.withTransactionSync(() => {
+    db.runSync(
+      "UPDATE exercise_templates SET name = 'Cadeira Extensora' WHERE LOWER(TRIM(name)) = 'cadeira extensora unilateral'"
+    );
+    db.runSync(
+      "UPDATE exercise_logs SET exercise_name = 'Cadeira Extensora' WHERE LOWER(TRIM(exercise_name)) = 'cadeira extensora unilateral'"
+    );
+
+    interface ExistingSplitMetaRow {
+      id: string;
+      name: string;
+      status: string;
+      started_at: string;
+      ended_at: string | null;
+      position: number;
+      log_cnt: number;
+    }
+
+    const existingSplits = db.getAllSync<ExistingSplitMetaRow>(
+      `SELECT s.id, s.name, s.status, s.started_at, s.ended_at, s.position,
+              (SELECT COUNT(*) FROM workout_logs wl WHERE wl.split_id = s.id) AS log_cnt
+       FROM splits s
+       ORDER BY s.position ASC`
+    );
+
+    for (let i = 0; i < existingSplits.length; i++) {
+      const row = existingSplits[i];
+      if (row.log_cnt > 0) continue;
+      const normalizedName = row.name.trim().toLowerCase();
+      if (normalizedName === 'pplx2' || normalizedName === 'ppl') {
+        const fresh = createPresetSplit('ppl', row.started_at);
+        fresh.id = row.id;
+        fresh.status = row.status === 'past' ? 'past' : 'active';
+        fresh.startedAt = row.started_at;
+        fresh.endedAt = row.ended_at ?? undefined;
+        insertSplitGraphInsideTx(db, fresh, row.position);
+      } else if (normalizedName === 'full body') {
+        const fresh = createPresetSplit('fullbody', row.started_at);
+        fresh.id = row.id;
+        fresh.status = row.status === 'past' ? 'past' : 'active';
+        fresh.startedAt = row.started_at;
+        fresh.endedAt = row.ended_at ?? undefined;
+        insertSplitGraphInsideTx(db, fresh, row.position);
+      }
+    }
+
+    db.runSync(
+      "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('migration_v3_splits_done', '1')"
+    );
+  });
 }
 
 interface SplitRow {
@@ -141,6 +226,8 @@ interface SplitRow {
   status: string;
   started_at: string;
   ended_at: string | null;
+  schedule_mode: string | null;
+  cycle_sequence_json: string | null;
 }
 
 interface WorkoutRow {
@@ -221,7 +308,7 @@ export interface HydratedSqliteEntities {
 
 function hydrateSplitsFromDb(db: SQLiteDatabase): TrainingSplit[] {
   const splitRows = db.getAllSync<SplitRow>(
-    'SELECT id, name, description, status, started_at, ended_at FROM splits ORDER BY position ASC'
+    'SELECT id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json FROM splits ORDER BY position ASC'
   );
   const workoutRows = db.getAllSync<WorkoutRow>(
     'SELECT id, split_id, name, accent FROM workouts ORDER BY position ASC'
@@ -280,24 +367,40 @@ function hydrateSplitsFromDb(db: SQLiteDatabase): TrainingSplit[] {
     map[r.weekday as WeekdayIndex] = r.workout_id ?? null;
   }
 
-  return splitRows.map((s) => ({
-    id: s.id,
-    name: s.name,
-    description: s.description,
-    status: (s.status === 'past' ? 'past' : 'active'),
-    startedAt: s.started_at,
-    endedAt: s.ended_at ?? undefined,
-    workouts: workoutsBySplit.get(s.id) ?? [],
-    weeklySchedule: scheduleBySplit.get(s.id) ?? {
-      0: null,
-      1: null,
-      2: null,
-      3: null,
-      4: null,
-      5: null,
-      6: null,
-    },
-  }));
+  return splitRows.map((s) => {
+    let cycleSequence: (string | null)[] | undefined;
+    if (s.cycle_sequence_json) {
+      try {
+        const parsed = JSON.parse(s.cycle_sequence_json);
+        if (Array.isArray(parsed)) {
+          cycleSequence = parsed.map((v) => (typeof v === 'string' ? v : null));
+        }
+      } catch {
+        cycleSequence = undefined;
+      }
+    }
+    const scheduleMode: SplitScheduleMode = s.schedule_mode === 'cycle' ? 'cycle' : 'weekly';
+    return {
+      id: s.id,
+      name: s.name,
+      description: s.description,
+      status: s.status === 'past' ? 'past' : 'active',
+      startedAt: s.started_at,
+      endedAt: s.ended_at ?? undefined,
+      scheduleMode,
+      cycleSequence,
+      workouts: workoutsBySplit.get(s.id) ?? [],
+      weeklySchedule: scheduleBySplit.get(s.id) ?? {
+        0: null,
+        1: null,
+        2: null,
+        3: null,
+        4: null,
+        5: null,
+        6: null,
+      },
+    };
+  });
 }
 
 function assembleWorkoutLogs(
@@ -465,13 +568,15 @@ function insertSplitGraphInsideTx(
   position: number
 ): void {
   db.runSync(
-    'INSERT OR REPLACE INTO splits (id, name, description, status, started_at, ended_at, position) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    'INSERT OR REPLACE INTO splits (id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     split.id,
     split.name,
     split.description,
     split.status,
     split.startedAt,
     split.endedAt ?? null,
+    split.scheduleMode ?? 'weekly',
+    split.cycleSequence ? JSON.stringify(split.cycleSequence) : null,
     position
   );
 
@@ -701,7 +806,11 @@ export function upsertSplitInDbSync(split: TrainingSplit, position: number): voi
   });
 }
 
-export function setActiveSplitInDbSync(splitId: string, todayDateISO: string): void {
+export function setActiveSplitInDbSync(
+  splitId: string,
+  todayDateISO: string,
+  nextStartedAt?: string
+): void {
   initDatabaseSync();
   const db = getDb();
   db.withTransactionSync(() => {
@@ -711,7 +820,8 @@ export function setActiveSplitInDbSync(splitId: string, todayDateISO: string): v
       splitId
     );
     db.runSync(
-      "UPDATE splits SET status = 'active', ended_at = NULL WHERE id = ?",
+      "UPDATE splits SET status = 'active', ended_at = NULL, started_at = COALESCE(?, started_at) WHERE id = ?",
+      nextStartedAt ?? null,
       splitId
     );
   });
@@ -738,6 +848,20 @@ export function updateWeeklyScheduleInDbSync(
       );
     }
   });
+}
+
+export function updateCycleScheduleInDbSync(
+  splitId: string,
+  cycleSequence: (string | null)[],
+  startedAt: string
+): void {
+  initDatabaseSync();
+  getDb().runSync(
+    'UPDATE splits SET cycle_sequence_json = ?, started_at = ? WHERE id = ?',
+    JSON.stringify(cycleSequence),
+    startedAt,
+    splitId
+  );
 }
 
 export function upsertBodyMetricInDbSync(entry: BodyMetricEntry): void {

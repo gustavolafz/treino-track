@@ -20,6 +20,8 @@ export interface WorkoutTemplate {
   exercises: ExerciseTemplate[];
 }
 
+export type SplitScheduleMode = 'weekly' | 'cycle';
+
 export interface TrainingSplit {
   id: string;
   name: string;
@@ -27,6 +29,8 @@ export interface TrainingSplit {
   status: 'active' | 'past';
   startedAt: string; // YYYY-MM-DD
   endedAt?: string; // YYYY-MM-DD
+  scheduleMode?: SplitScheduleMode; // defaults to 'weekly'
+  cycleSequence?: (string | null)[]; // rolling sequence from startedAt when scheduleMode === 'cycle'
   workouts: WorkoutTemplate[];
   weeklySchedule: Record<WeekdayIndex, string | null>; // workoutTemplateId or null for rest
 }

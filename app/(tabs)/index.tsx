@@ -40,8 +40,8 @@ import {
   addDaysCached,
   formatFullDateCached,
   getMondayOfWeekCached,
-  getWeekdayCached,
 } from '@/lib/dateCache';
+import { getPlannedWorkoutIdForDate } from '@/lib/schedule';
 import { toISODate } from '@/lib/utils';
 import {
   useStoreActions,
@@ -110,10 +110,10 @@ export default function TreinoScreen() {
   const [completedDialogOpen, setCompletedDialogOpen] = useState(false);
 
   const plannedWorkout = useMemo(() => {
-    const workoutId = activeSplit.weeklySchedule[getWeekdayCached(selectedDate)];
+    const workoutId = getPlannedWorkoutIdForDate(activeSplit, selectedDate);
     if (!workoutId) return null;
     return activeSplit.workouts.find((w) => w.id === workoutId) ?? null;
-  }, [activeSplit.weeklySchedule, activeSplit.workouts, selectedDate]);
+  }, [activeSplit, selectedDate]);
 
   const logSummary = useMemo(() => {
     if (!currentLog) return { completedSets: 0, totalSets: 0, totalReps: 0, volumeKg: 0 };
@@ -234,8 +234,7 @@ export default function TreinoScreen() {
     let weekPlanned = 0;
     for (let i = 0; i < 7; i++) {
       const dISO = addDaysCached(weekMonday, i);
-      const wd = getWeekdayCached(dISO);
-      if (activeSplit.weeklySchedule[wd]) weekPlanned += 1;
+      if (getPlannedWorkoutIdForDate(activeSplit, dISO)) weekPlanned += 1;
       if (logsByDate[dISO]?.status === 'completed') weekCompleted += 1;
     }
 
@@ -263,7 +262,7 @@ export default function TreinoScreen() {
     }
 
     return { weekCompleted, weekPlanned, prevVolumeKg };
-  }, [activeSplit.weeklySchedule, currentLog, logsByDate, selectedDate, weekMonday]);
+  }, [activeSplit, currentLog, logsByDate, selectedDate, weekMonday]);
 
   const handleFinishWorkout = useCallback(() => {
     setRestTrigger(null);

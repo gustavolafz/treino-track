@@ -2,11 +2,8 @@ import { ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react-
 import React, { useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import { Badge, Button, Card, CardContent, Progress, Text } from '@/components/ui';
-import {
-  addDaysCached,
-  formatShortDateCached,
-  getWeekdayCached,
-} from '@/lib/dateCache';
+import { addDaysCached, formatShortDateCached } from '@/lib/dateCache';
+import { getPlannedWorkoutIdForDate } from '@/lib/schedule';
 import { cn, WEEKDAYS_MON_SUN } from '@/lib/utils';
 import { useWorkoutStore } from '@/store/useWorkoutStore';
 import type { TrainingSplit } from '@/types/workout';
@@ -36,8 +33,7 @@ const WeekProgressCard = React.memo(function WeekProgressCard({
     let skippedCount = 0;
     for (let i = 0; i < 7; i++) {
       const dateISO = addDaysCached(weekMonday, i);
-      const wd = getWeekdayCached(dateISO);
-      if (activeSplit.weeklySchedule[wd]) plannedCount += 1;
+      if (getPlannedWorkoutIdForDate(activeSplit, dateISO)) plannedCount += 1;
       const st = s.logsByDate[dateISO]?.status;
       if (st === 'completed') completedCount += 1;
       else if (st === 'skipped') skippedCount += 1;
@@ -206,7 +202,7 @@ export const WeekStripHeader = React.memo(function WeekStripHeader({
   const days = useMemo(() => {
     return WEEKDAYS_MON_SUN.map((wd, idx) => {
       const dateISO = addDaysCached(weekMonday, idx);
-      const workoutId = activeSplit.weeklySchedule[getWeekdayCached(dateISO)];
+      const workoutId = getPlannedWorkoutIdForDate(activeSplit, dateISO);
       const planned = workoutId
         ? activeSplit.workouts.find((w) => w.id === workoutId) ?? null
         : null;
@@ -218,7 +214,7 @@ export const WeekStripHeader = React.memo(function WeekStripHeader({
         isToday: dateISO === todayISO,
       };
     });
-  }, [activeSplit.weeklySchedule, activeSplit.workouts, todayISO, weekMonday]);
+  }, [activeSplit, todayISO, weekMonday]);
 
   return (
     <Card className="mb-3">

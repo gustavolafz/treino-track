@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   CreateSplitDialog,
   DayPickerDialog,
+  type DayPickerTarget,
   ExerciseActionDialog,
   ExerciseTemplateDialog,
   WorkoutTemplateDialog,
@@ -38,7 +39,8 @@ import {
 } from '@/components/ui';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { formatShortDateCached } from '@/lib/dateCache';
-import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
+import { getCycleStepIndexForDate } from '@/lib/schedule';
+import { cn, toISODate, WEEKDAYS_MON_SUN } from '@/lib/utils';
 import {
   useStoreActions,
   useThemePreference,
@@ -283,6 +285,7 @@ export default function RotinaScreen() {
   const activeSplit = useWorkoutStore((s) => s.activeSplit);
   const {
     assignWorkoutToDay,
+    assignWorkoutToCycleStep,
     rotateActiveSchedule,
     createSplit,
     activateSplit,
@@ -313,7 +316,7 @@ export default function RotinaScreen() {
   } | null>(null);
 
   // Lightweight modal visibility / target references (form states live inside RotinaDialogs)
-  const [dayPickerDay, setDayPickerDay] = useState<WeekdayIndex | null>(null);
+  const [dayPickerTarget, setDayPickerTarget] = useState<DayPickerTarget | null>(null);
   const [wkDialogOpen, setWkDialogOpen] = useState(false);
   const [editingWorkout, setEditingWorkout] = useState<{
     id: string;
@@ -326,12 +329,26 @@ export default function RotinaScreen() {
   } | null>(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
 
-  const weeklyTotals = useMemo(() => {
+  const isCycleSplit =
+    activeSplit.scheduleMode === 'cycle' &&
+    Array.isArray(activeSplit.cycleSequence) &&
+    activeSplit.cycleSequence.length > 0;
+
+  const todayISO = useMemo(() => toISODate(new Date()), []);
+  const todayCycleStepIdx = useMemo(
+    () => (isCycleSplit ? getCycleStepIndexForDate(activeSplit, todayISO) : -1),
+    [activeSplit, isCycleSplit, todayISO]
+  );
+
+  const scheduleTotals = useMemo(() => {
     let totalExercises = 0;
     let totalSets = 0;
     let trainingDays = 0;
-    for (const wd of WEEKDAYS_MON_SUN) {
-      const wkId = activeSplit.weeklySchedule[wd.day];
+    const slotIds = isCycleSplit
+      ? activeSplit.cycleSequence ?? []
+      : WEEKDAYS_MON_SUN.map((wd) => activeSplit.weeklySchedule[wd.day]);
+
+    for (const wkId of slotIds) {
       const wk = activeSplit.workouts.find((w) => w.id === wkId);
       if (wk) {
         trainingDays += 1;
@@ -339,8 +356,13 @@ export default function RotinaScreen() {
         totalSets += wk.exercises.reduce((acc, e) => acc + e.targetSets, 0);
       }
     }
-    return { totalExercises, totalSets, trainingDays };
-  }, [activeSplit.weeklySchedule, activeSplit.workouts]);
+    return {
+      totalExercises,
+      totalSets,
+      trainingDays,
+      totalSlots: slotIds.length,
+    };
+  }, [activeSplit.cycleSequence, activeSplit.weeklySchedule, activeSplit.workouts, isCycleSplit]);
 
   const openNewWorkout = useCallback(() => {
     setEditingWorkout(null);
@@ -500,7 +522,7 @@ export default function RotinaScreen() {
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
                   <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
-                    Dias de Treino
+                    {isCycleSplit ? 'Treinos / Ciclo' : 'Dias de Treino'}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -508,7 +530,7 @@ export default function RotinaScreen() {
                     minimumFontScale={0.75}
                     className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
-                    {weeklyTotals.trainingDays}/7
+                    {scheduleTotals.trainingDays}/{scheduleTotals.totalSlots}
                   </Text>
                 </CardContent>
               </Card>
@@ -523,14 +545,14 @@ export default function RotinaScreen() {
                     minimumFontScale={0.75}
                     className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
-                    {weeklyTotals.totalExercises}
+                    {scheduleTotals.totalExercises}
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
                   <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
-                    Séries / Sem
+                    {isCycleSplit ? 'Séries / Ciclo' : 'Séries / Sem'}
                   </Text>
                   <Text
                     numberOfLines={1}
@@ -538,7 +560,7 @@ export default function RotinaScreen() {
                     minimumFontScale={0.75}
                     className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
-                    {weeklyTotals.totalSets}
+                    {scheduleTotals.totalSets}
                   </Text>
                 </CardContent>
               </Card>
@@ -548,9 +570,15 @@ export default function RotinaScreen() {
               <CardHeader>
                 <View className="flex-row items-start justify-between gap-2">
                   <View className="flex-1">
-                    <CardTitle>Grade da Semana ({activeSplit.name})</CardTitle>
+                    <CardTitle>
+                      {isCycleSplit
+                        ? `Ciclo Contínuo (${activeSplit.name})`
+                        : `Grade da Semana (${activeSplit.name})`}
+                    </CardTitle>
                     <CardDescription>
-                      Toque em qualquer dia para trocar ou use os botões para rotacionar ±1 dia.
+                      {isCycleSplit
+                        ? `Sequência de ${scheduleTotals.totalSlots} dias (início em ${formatShortDateCached(activeSplit.startedAt)}). Toque para editar ou rotacione ±1 dia.`
+                        : 'Toque em qualquer dia para trocar ou use os botões para rotacionar ±1 dia.'}
                     </CardDescription>
                   </View>
                 </View>
@@ -576,43 +604,93 @@ export default function RotinaScreen() {
                 </View>
               </CardHeader>
               <CardContent className="gap-2">
-                {WEEKDAYS_MON_SUN.map((wd) => {
-                  const workoutId = activeSplit.weeklySchedule[wd.day];
-                  const workout = activeSplit.workouts.find((w) => w.id === workoutId) ?? null;
-                  const totalSets = workout
-                    ? workout.exercises.reduce((acc, e) => acc + e.targetSets, 0)
-                    : 0;
+                {isCycleSplit
+                  ? (activeSplit.cycleSequence ?? []).map((workoutId, idx) => {
+                      const workout = activeSplit.workouts.find((w) => w.id === workoutId) ?? null;
+                      const totalSets = workout
+                        ? workout.exercises.reduce((acc, e) => acc + e.targetSets, 0)
+                        : 0;
+                      const isTodayStep = idx === todayCycleStepIdx;
 
-                  return (
-                    <Pressable
-                      key={wd.day}
-                      onPress={() => setDayPickerDay(wd.day)}
-                      className="flex-row items-center justify-between rounded-xl border border-border bg-background/60 p-3 active:opacity-80"
-                    >
-                      <View className="flex-row items-center gap-3">
-                        <View className="w-10 items-center rounded-md bg-secondary py-1">
-                          <Text className="text-xs font-bold uppercase text-secondary-foreground">
-                            {wd.short}
-                          </Text>
-                        </View>
-                        <View>
-                          <Text className="text-sm font-semibold text-foreground">
-                            {wd.label}
-                          </Text>
-                          <Text className="text-xs text-muted-foreground">
-                            {workout
-                              ? `${workout.exercises.length} exercícios • ${totalSets} séries`
-                              : 'Dia de recuperação'}
-                          </Text>
-                        </View>
-                      </View>
+                      return (
+                        <Pressable
+                          key={`cycle-${idx}`}
+                          onPress={() => setDayPickerTarget({ type: 'cycle', stepIndex: idx })}
+                          className={cn(
+                            'flex-row items-center justify-between rounded-xl border p-3 active:opacity-80',
+                            isTodayStep
+                              ? 'border-primary/40 bg-primary/5'
+                              : 'border-border bg-background/60'
+                          )}
+                        >
+                          <View className="flex-row items-center gap-3">
+                            <View className="w-12 items-center rounded-md bg-secondary py-1">
+                              <Text className="text-xs font-bold uppercase text-secondary-foreground tabular-nums">
+                                Dia {idx + 1}
+                              </Text>
+                            </View>
+                            <View>
+                              <View className="flex-row items-center gap-1.5">
+                                <Text className="text-sm font-semibold text-foreground">
+                                  {workout ? workout.name : 'Descanso'}
+                                </Text>
+                                {isTodayStep ? (
+                                  <Badge variant="success">
+                                    <Text>Hoje</Text>
+                                  </Badge>
+                                ) : null}
+                              </View>
+                              <Text className="text-xs text-muted-foreground">
+                                {workout
+                                  ? `${workout.exercises.length} exercícios • ${totalSets} séries`
+                                  : 'Dia de recuperação'}
+                              </Text>
+                            </View>
+                          </View>
 
-                      <Badge variant={workout ? 'default' : 'secondary'}>
-                        <Text>{workout ? workout.name : 'Descanso'}</Text>
-                      </Badge>
-                    </Pressable>
-                  );
-                })}
+                          <Badge variant={workout ? 'default' : 'secondary'}>
+                            <Text>{workout ? workout.name : 'Descanso'}</Text>
+                          </Badge>
+                        </Pressable>
+                      );
+                    })
+                  : WEEKDAYS_MON_SUN.map((wd) => {
+                      const workoutId = activeSplit.weeklySchedule[wd.day];
+                      const workout = activeSplit.workouts.find((w) => w.id === workoutId) ?? null;
+                      const totalSets = workout
+                        ? workout.exercises.reduce((acc, e) => acc + e.targetSets, 0)
+                        : 0;
+
+                      return (
+                        <Pressable
+                          key={wd.day}
+                          onPress={() => setDayPickerTarget({ type: 'weekday', day: wd.day })}
+                          className="flex-row items-center justify-between rounded-xl border border-border bg-background/60 p-3 active:opacity-80"
+                        >
+                          <View className="flex-row items-center gap-3">
+                            <View className="w-10 items-center rounded-md bg-secondary py-1">
+                              <Text className="text-xs font-bold uppercase text-secondary-foreground">
+                                {wd.short}
+                              </Text>
+                            </View>
+                            <View>
+                              <Text className="text-sm font-semibold text-foreground">
+                                {wd.label}
+                              </Text>
+                              <Text className="text-xs text-muted-foreground">
+                                {workout
+                                  ? `${workout.exercises.length} exercícios • ${totalSets} séries`
+                                  : 'Dia de recuperação'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          <Badge variant={workout ? 'default' : 'secondary'}>
+                            <Text>{workout ? workout.name : 'Descanso'}</Text>
+                          </Badge>
+                        </Pressable>
+                      );
+                    })}
               </CardContent>
             </Card>
           </ScrollView>
@@ -661,11 +739,12 @@ export default function RotinaScreen() {
       </Tabs>
 
       <DayPickerDialog
-        day={dayPickerDay}
-        onClose={() => setDayPickerDay(null)}
+        target={dayPickerTarget}
+        onClose={() => setDayPickerTarget(null)}
         activeSplit={activeSplit}
         iconPrimary={iconPrimary}
-        onAssign={assignWorkoutToDay}
+        onAssignWeekday={assignWorkoutToDay}
+        onAssignCycleStep={assignWorkoutToCycleStep}
       />
 
       <WorkoutTemplateDialog

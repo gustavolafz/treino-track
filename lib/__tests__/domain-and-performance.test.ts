@@ -12,7 +12,11 @@ import {
   patchLastExerciseHistory,
   patchSplitCompletedCounts,
 } from '@/lib/historyIndex';
-import { rotateScheduleByDays } from '@/lib/schedule';
+import {
+  getPlannedWorkoutIdForDate,
+  rotateScheduleByDays,
+  shiftCycleStartDate,
+} from '@/lib/schedule';
 import { buildInitialDemoData, createPresetSplit } from '@/lib/seedData';
 import { cn, estimate1RM, formatMetric, roundDecimal, type WeekdayIndex } from '@/lib/utils';
 import { computeSetSeriesFast, estimate1RMFast } from '@/modules/treino-native/index.web';
@@ -187,4 +191,89 @@ test('roundDecimal and formatMetric strip IEEE-754 float drift from native/Epley
   assert.equal(formatMetric(18.5 * (1 + 8 / 30)), '23.4');
   assert.equal(formatMetric(-0.0001), '0');
   assert.equal(formatMetric(Number.NaN), '0');
+});
+
+test('createPresetSplit("ppl") and ("fullbody") enforce exact rolling cycles and deduplicated canonical names', () => {
+  const pplul = createPresetSplit('pplul', '2026-10-17');
+  const ppl = createPresetSplit('ppl', '2026-11-16');
+  const fb = createPresetSplit('fullbody', '2026-11-16');
+
+  // PPLUL canonical Cadeira Extensora rename (zero "Unilateral")
+  const pplulNames = pplul.workouts.flatMap((w) => w.exercises.map((e) => e.name));
+  assert.ok(!pplulNames.includes('Cadeira Extensora Unilateral'));
+  assert.equal(pplulNames.filter((n) => n === 'Cadeira Extensora').length, 2);
+
+  // PPL 4-day rolling cycle: Push -> Pull -> Legs -> Descanso
+  assert.equal(ppl.name, 'PPL');
+  assert.equal(ppl.scheduleMode, 'cycle');
+  assert.equal(ppl.cycleSequence?.length, 4);
+  assert.equal(ppl.workouts.length, 3);
+  const [push, pull, legs] = ppl.workouts;
+  assert.equal(push.exercises.length, 7);
+  assert.equal(pull.exercises.length, 7);
+  assert.equal(legs.exercises.length, 6);
+
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-16'), push.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-17'), pull.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-18'), legs.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-19'), null);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-20'), push.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-21'), pull.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-22'), legs.id);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-23'), null);
+  assert.equal(getPlannedWorkoutIdForDate(ppl, '2026-11-24'), push.id);
+
+  // Cycle shift +1 / -1 inverses
+  const shiftedStart = shiftCycleStartDate(ppl.startedAt, 1);
+  const shiftedPpl = { ...ppl, startedAt: shiftedStart };
+  assert.equal(getPlannedWorkoutIdForDate(shiftedPpl, '2026-11-17'), push.id);
+  assert.equal(shiftCycleStartDate(shiftedStart, -1), ppl.startedAt);
+
+  // Full Body 6-day rolling cycle: A -> Off -> B -> Off -> C -> Off
+  assert.equal(fb.name, 'Full Body');
+  assert.equal(fb.scheduleMode, 'cycle');
+  assert.equal(fb.cycleSequence?.length, 6);
+  const [diaA, diaB, diaC] = fb.workouts;
+  assert.deepEqual(
+    diaA.exercises.map((e) => e.name),
+    ['Supino Reto Articulado', 'Puxada Aberta Barra Reta', 'Agachamento Livre']
+  );
+  assert.deepEqual(
+    diaB.exercises.map((e) => e.name),
+    ['Puxada Aberta Barra Reta', 'Agachamento Livre', 'Supino Reto Articulado']
+  );
+  assert.deepEqual(
+    diaC.exercises.map((e) => e.name),
+    ['Agachamento Livre', 'Supino Reto Articulado', 'Puxada Aberta Barra Reta']
+  );
+
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-16'), diaA.id);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-17'), null);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-18'), diaB.id);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-19'), null);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-20'), diaC.id);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-21'), null);
+  assert.equal(getPlannedWorkoutIdForDate(fb, '2026-11-22'), diaA.id);
+
+  // All PPL & Full Body exercises use canonical deduplicated names + 3-7 reps
+  for (const ex of [...ppl.workouts, ...fb.workouts].flatMap((w) => w.exercises)) {
+    assert.equal(ex.targetReps, '3-7');
+    assert.ok(ex.restSeconds === 180 || ex.restSeconds === 120);
+  }
+  const canonicalShared = [
+    ...pplul.workouts,
+    ...ppl.workouts,
+    ...fb.workouts,
+  ].flatMap((w) => w.exercises.map((e) => e.name));
+  for (const forbidden of [
+    'Puxada Alta Pronada',
+    'Stiff Barra Livre',
+    'Elevação Lateral',
+    'Rosca Martelo',
+    'Cadeira Abdutora',
+    'Cadeira Adutora',
+    'Cadeira Extensora Unilateral',
+  ]) {
+    assert.ok(!canonicalShared.includes(forbidden), `Unexpected duplicate variant: ${forbidden}`);
+  }
 });

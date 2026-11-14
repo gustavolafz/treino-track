@@ -11,6 +11,7 @@ import {
   renumberSetsInDbSync,
   replaceAllEntitiesInSqliteSync,
   setActiveSplitInDbSync,
+  updateCycleScheduleInDbSync,
   updateSetInDbSync,
   updateWeeklyScheduleInDbSync,
   updateWorkoutStatusInDbSync,
@@ -25,7 +26,11 @@ import {
   patchSplitCompletedCounts,
   type ExerciseHistoryEntry,
 } from '@/lib/historyIndex';
-import { rotateScheduleByDays } from '@/lib/schedule';
+import {
+  getPlannedWorkoutIdForDate,
+  rotateScheduleByDays,
+  shiftCycleStartDate,
+} from '@/lib/schedule';
 import { buildCleanEmptyData, buildInitialDemoData, createPresetSplit, type PresetSplitKey } from '@/lib/seedData';
 import {
   markLegacyMigratedMmkv,
@@ -59,6 +64,21 @@ function computeCutoffISO(anchorDateISO: string, daysBack: number): string {
 
 function getActiveSplitFrom(splits: TrainingSplit[]): TrainingSplit {
   return splits.find((s) => s.status === 'active') ?? splits[0];
+}
+
+function shiftSplitSchedule(split: TrainingSplit, delta: 1 | -1): TrainingSplit {
+  if (split.scheduleMode === 'cycle' && split.cycleSequence && split.cycleSequence.length > 0) {
+    return { ...split, startedAt: shiftCycleStartDate(split.startedAt, delta) };
+  }
+  return { ...split, weeklySchedule: rotateScheduleByDays(split.weeklySchedule, delta) };
+}
+
+function persistSplitScheduleOnly(split: TrainingSplit): void {
+  if (split.scheduleMode === 'cycle' && split.cycleSequence) {
+    updateCycleScheduleInDbSync(split.id, split.cycleSequence, split.startedAt);
+  } else {
+    updateWeeklyScheduleInDbSync(split.id, split.weeklySchedule);
+  }
 }
 
 function buildLogsByDate(logs: WorkoutLog[]): Record<string, WorkoutLog> {
@@ -170,8 +190,9 @@ function hydrateInitialState(): HydratedBootState {
 export interface WorkoutStoreActions {
   toggleTheme: () => void;
 
-  // Splits & Weekly Schedule
+  // Splits & Weekly / Cycle Schedule
   assignWorkoutToDay: (day: WeekdayIndex, workoutId: string | null) => void;
+  assignWorkoutToCycleStep: (stepIndex: number, workoutId: string | null) => void;
   rotateActiveSchedule: (delta: 1 | -1) => void;
   createSplit: (name: string, description: string, preset?: PresetSplitKey) => void;
   activateSplit: (splitId: string) => void;
@@ -338,15 +359,33 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
       );
     },
 
-    rotateActiveSchedule: (delta) => {
+    assignWorkoutToCycleStep: (stepIndex, workoutId) => {
       updateActiveSplit(
-        (s) => ({
-          ...s,
-          weeklySchedule: rotateScheduleByDays(s.weeklySchedule, delta),
-        }),
+        (s) => {
+          const seq = [...(s.cycleSequence ?? [])];
+          if (stepIndex >= 0 && stepIndex < seq.length) {
+            seq[stepIndex] = workoutId;
+          }
+          return { ...s, cycleSequence: seq };
+        },
         (updated) => {
           try {
-            updateWeeklyScheduleInDbSync(updated.id, updated.weeklySchedule);
+            if (updated.cycleSequence) {
+              updateCycleScheduleInDbSync(updated.id, updated.cycleSequence, updated.startedAt);
+            }
+          } catch (err) {
+            console.warn('Erro ao atualizar ciclo:', err);
+          }
+        }
+      );
+    },
+
+    rotateActiveSchedule: (delta) => {
+      updateActiveSplit(
+        (s) => shiftSplitSchedule(s, delta),
+        (updated) => {
+          try {
+            persistSplitScheduleOnly(updated);
           } catch (err) {
             console.warn('Erro ao rotacionar agenda:', err);
           }
@@ -381,9 +420,17 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
     activateSplit: (splitId) => {
       const today = toISODate(new Date());
       set((store) => {
+        let nextStartedAtForCycle: string | undefined;
         const nextSplits = store.data.splits.map((s) => {
           if (s.id === splitId) {
-            return { ...s, status: 'active' as const, endedAt: undefined };
+            const isCycle = s.scheduleMode === 'cycle';
+            if (isCycle) nextStartedAtForCycle = today;
+            return {
+              ...s,
+              status: 'active' as const,
+              endedAt: undefined,
+              startedAt: isCycle ? today : s.startedAt,
+            };
           }
           if (s.status === 'active') {
             return { ...s, status: 'past' as const, endedAt: today };
@@ -391,7 +438,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           return s;
         });
         try {
-          setActiveSplitInDbSync(splitId, today);
+          setActiveSplitInDbSync(splitId, today, nextStartedAtForCycle);
         } catch (err) {
           console.warn('Erro ao ativar ficha:', err);
         }
@@ -499,10 +546,14 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
             nextSchedule[k] = null;
           }
         });
+        const nextCycleSequence = s.cycleSequence
+          ? s.cycleSequence.map((id) => (id === workoutId ? null : id))
+          : undefined;
         return {
           ...s,
           workouts: s.workouts.filter((w) => w.id !== workoutId),
           weeklySchedule: nextSchedule,
+          cycleSequence: nextCycleSequence,
         };
       });
     },
@@ -563,8 +614,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
 
     getPlannedWorkoutForDate: (dateISO) => {
       const split = get().activeSplit;
-      const weekday = getWeekdayCached(dateISO);
-      const workoutId = split.weeklySchedule[weekday];
+      const workoutId = getPlannedWorkoutIdForDate(split, dateISO);
       if (!workoutId) return null;
       return split.workouts.find((w) => w.id === workoutId) ?? null;
     },
@@ -653,8 +703,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
       set((store) => {
         const split = store.activeSplit;
         const existing = store.logsByDate[dateISO];
-        const weekday = getWeekdayCached(dateISO);
-        const plannedId = split.weeklySchedule[weekday];
+        const plannedId = getPlannedWorkoutIdForDate(split, dateISO);
         const planned = plannedId ? split.workouts.find((w) => w.id === plannedId) ?? null : null;
 
         const alreadyRotated = existing?.status === 'skipped' && existing.skipMode === 'rotate';
@@ -665,11 +714,10 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         let nextActiveSplit = split;
         if (shouldRotateForward || shouldRevertRotation) {
           const delta: 1 | -1 = shouldRotateForward ? 1 : -1;
-          const rotatedSchedule = rotateScheduleByDays(split.weeklySchedule, delta);
-          nextActiveSplit = { ...split, weeklySchedule: rotatedSchedule };
+          nextActiveSplit = shiftSplitSchedule(split, delta);
           nextSplits = store.data.splits.map((s) => (s.id === split.id ? nextActiveSplit : s));
           try {
-            updateWeeklyScheduleInDbSync(split.id, rotatedSchedule);
+            persistSplitScheduleOnly(nextActiveSplit);
           } catch (err) {
             console.warn('Erro ao salvar rotação de skip:', err);
           }
@@ -724,11 +772,10 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         let nextSplits = store.data.splits;
         let nextActiveSplit = split;
         if (wasRotated) {
-          const reverted = rotateScheduleByDays(split.weeklySchedule, -1);
-          nextActiveSplit = { ...split, weeklySchedule: reverted };
+          nextActiveSplit = shiftSplitSchedule(split, -1);
           nextSplits = store.data.splits.map((s) => (s.id === split.id ? nextActiveSplit : s));
           try {
-            updateWeeklyScheduleInDbSync(split.id, reverted);
+            persistSplitScheduleOnly(nextActiveSplit);
           } catch (err) {
             console.warn('Erro ao reverter rotação de skip:', err);
           }

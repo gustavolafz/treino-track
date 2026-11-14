@@ -18,8 +18,8 @@ import type { AccentTag, ExerciseTemplate, TrainingSplit } from '@/types/workout
 
 const PRESET_OPTIONS: { key: PresetSplitKey; label: string; desc: string }[] = [
   { key: 'pplul', label: 'PPLUL', desc: 'Pull • Push • Legs • Upper • Lower (51 séries)' },
-  { key: 'pplx2', label: 'PPLx2', desc: 'Push • Pull • Legs 2x na semana (6x)' },
-  { key: 'fullbody', label: 'Full Body', desc: 'Corpo inteiro 3x na semana' },
+  { key: 'ppl', label: 'PPL', desc: 'Push → Pull → Legs → Descanso (ciclo 4 dias)' },
+  { key: 'fullbody', label: 'Full Body', desc: 'Dia A → Descanso → Dia B → Descanso → Dia C → Descanso' },
   { key: 'upper_lower', label: 'Upper / Lower', desc: 'Superiores e Inferiores (4x)' },
   { key: 'custom', label: 'Personalizada', desc: 'Começar em branco do seu jeito' },
 ];
@@ -27,43 +27,66 @@ const PRESET_OPTIONS: { key: PresetSplitKey; label: string; desc: string }[] = [
 const ACCENT_OPTIONS: AccentTag[] = ['blue', 'emerald', 'violet', 'amber', 'rose', 'zinc'];
 const REST_PRESETS = [60, 90, 120, 150, 180];
 
+export type DayPickerTarget =
+  | { type: 'weekday'; day: WeekdayIndex }
+  | { type: 'cycle'; stepIndex: number };
+
 interface DayPickerDialogProps {
-  day: WeekdayIndex | null;
+  target: DayPickerTarget | null;
   onClose: () => void;
   activeSplit: TrainingSplit;
   iconPrimary: string;
-  onAssign: (day: WeekdayIndex, workoutId: string | null) => void;
+  onAssignWeekday: (day: WeekdayIndex, workoutId: string | null) => void;
+  onAssignCycleStep: (stepIndex: number, workoutId: string | null) => void;
 }
 
 export const DayPickerDialog = React.memo(function DayPickerDialog({
-  day,
+  target,
   onClose,
   activeSplit,
   iconPrimary,
-  onAssign,
+  onAssignWeekday,
+  onAssignCycleStep,
 }: DayPickerDialogProps) {
+  const currentAssignedId =
+    target?.type === 'weekday'
+      ? activeSplit.weeklySchedule[target.day]
+      : target?.type === 'cycle'
+      ? activeSplit.cycleSequence?.[target.stepIndex] ?? null
+      : null;
+
+  const titleLabel =
+    target?.type === 'weekday'
+      ? `Definir rotina de ${WEEKDAYS_MON_SUN.find((w) => w.day === target.day)?.label}`
+      : target?.type === 'cycle'
+      ? `Definir Dia ${target.stepIndex + 1} do ciclo`
+      : '';
+
+  const assignChoice = (workoutId: string | null) => {
+    if (!target) return;
+    if (target.type === 'weekday') {
+      onAssignWeekday(target.day, workoutId);
+    } else {
+      onAssignCycleStep(target.stepIndex, workoutId);
+    }
+    onClose();
+  };
+
   return (
-    <Dialog open={day !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={target !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogHeader>
-        <DialogTitle>
-          Definir rotina de {WEEKDAYS_MON_SUN.find((w) => w.day === day)?.label}
-        </DialogTitle>
+        <DialogTitle>{titleLabel}</DialogTitle>
         <DialogDescription>
           Escolha um treino da divisão {activeSplit.name} ou marque como Descanso.
         </DialogDescription>
       </DialogHeader>
       <View className="gap-2">
         {activeSplit.workouts.map((wk) => {
-          const selected = day !== null && activeSplit.weeklySchedule[day] === wk.id;
+          const selected = target !== null && currentAssignedId === wk.id;
           return (
             <Pressable
               key={wk.id}
-              onPress={() => {
-                if (day !== null) {
-                  onAssign(day, wk.id);
-                  onClose();
-                }
-              }}
+              onPress={() => assignChoice(wk.id)}
               className={cn(
                 'flex-row items-center justify-between rounded-lg border p-3',
                 selected ? 'border-primary bg-primary/10' : 'border-border bg-secondary/40'
@@ -81,15 +104,10 @@ export const DayPickerDialog = React.memo(function DayPickerDialog({
         })}
 
         <Pressable
-          onPress={() => {
-            if (day !== null) {
-              onAssign(day, null);
-              onClose();
-            }
-          }}
+          onPress={() => assignChoice(null)}
           className={cn(
             'flex-row items-center justify-between rounded-lg border p-3',
-            day !== null && activeSplit.weeklySchedule[day] === null
+            target !== null && currentAssignedId === null
               ? 'border-primary bg-primary/10'
               : 'border-dashed border-border'
           )}
@@ -98,7 +116,7 @@ export const DayPickerDialog = React.memo(function DayPickerDialog({
             <Text className="text-sm font-semibold text-foreground">Descanso (Off)</Text>
             <Text className="text-xs text-muted-foreground">Dia livre para recuperação</Text>
           </View>
-          {day !== null && activeSplit.weeklySchedule[day] === null ? (
+          {target !== null && currentAssignedId === null ? (
             <Check size={16} color={iconPrimary} />
           ) : null}
         </Pressable>

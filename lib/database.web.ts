@@ -158,11 +158,20 @@ export function upsertSplitInDbSync(split: TrainingSplit, _position: number): vo
   writeWebStore(data);
 }
 
-export function setActiveSplitInDbSync(splitId: string, todayDateISO: string): void {
+export function setActiveSplitInDbSync(
+  splitId: string,
+  todayDateISO: string,
+  nextStartedAt?: string
+): void {
   const data = readWebStore();
   data.splits = data.splits.map((s) =>
     s.id === splitId
-      ? { ...s, status: 'active' as const, endedAt: undefined }
+      ? {
+          ...s,
+          status: 'active' as const,
+          endedAt: undefined,
+          startedAt: nextStartedAt ?? s.startedAt,
+        }
       : s.status === 'active'
       ? { ...s, status: 'past' as const, endedAt: s.endedAt ?? todayDateISO }
       : s
@@ -184,6 +193,20 @@ export function updateWeeklyScheduleInDbSync(
   const target = data.splits.find((s) => s.id === splitId);
   if (target) {
     target.weeklySchedule = weeklySchedule;
+    writeWebStore(data);
+  }
+}
+
+export function updateCycleScheduleInDbSync(
+  splitId: string,
+  cycleSequence: (string | null)[],
+  startedAt: string
+): void {
+  const data = readWebStore();
+  const target = data.splits.find((s) => s.id === splitId);
+  if (target) {
+    target.cycleSequence = cycleSequence;
+    target.startedAt = startedAt;
     writeWebStore(data);
   }
 }

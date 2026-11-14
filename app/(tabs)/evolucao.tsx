@@ -36,8 +36,8 @@ import {
   addDaysCached,
   formatShortDateCached,
   getMondayOfWeekCached,
-  getWeekdayCached,
 } from '@/lib/dateCache';
+import { getPlannedWorkoutIdForDate } from '@/lib/schedule';
 import { cn, formatMetric, roundDecimal, toISODate } from '@/lib/utils';
 import {
   useStoreActions,
@@ -271,8 +271,9 @@ export default function EvolucaoScreen() {
     const currentWeekMon = getMondayOfWeekCached(todayISO);
     let weekPlanned = 0;
     for (let i = 0; i < 7; i++) {
-      const wd = getWeekdayCached(addDaysCached(currentWeekMon, i));
-      if (activeSplit.weeklySchedule[wd]) weekPlanned += 1;
+      if (getPlannedWorkoutIdForDate(activeSplit, addDaysCached(currentWeekMon, i))) {
+        weekPlanned += 1;
+      }
     }
     const thisWeekDone = weekMap.get(currentWeekMon)?.completed ?? 0;
 
@@ -284,7 +285,7 @@ export default function EvolucaoScreen() {
     }
 
     return { bars, totalDone, totalSkipped, adherence, thisWeekDone, weekPlanned, streakWeeks };
-  }, [activeSplit.weeklySchedule, analyticsRevision, cutoffISO, todayISO]);
+  }, [activeSplit, analyticsRevision, cutoffISO, todayISO]);
 
   const iconPrimary = isDark ? '#fafafa' : '#18181b';
   const iconMuted = isDark ? '#a1a1aa' : '#71717a';

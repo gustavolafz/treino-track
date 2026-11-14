@@ -1,31 +1,34 @@
 import { cva, type VariantProps } from 'class-variance-authority';
 import * as React from 'react';
-import { Pressable, type PressableProps, StyleSheet } from 'react-native';
+import { Pressable, type PressableProps } from 'react-native';
 import { triggerNativeHaptic, type HapticKind } from '@/modules/treino-native';
 import { TextClassContext } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
-const buttonVariants = cva('flex-row items-center justify-center gap-2 rounded-lg', {
-  variants: {
-    variant: {
-      default: 'bg-primary',
-      destructive: 'bg-destructive',
-      outline: 'border border-border bg-transparent',
-      secondary: 'bg-secondary',
-      ghost: 'bg-transparent',
+const buttonVariants = cva(
+  'flex-row items-center justify-center gap-2 rounded-lg active:opacity-80',
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary shadow-sm',
+        destructive: 'bg-destructive shadow-sm',
+        outline: 'border border-border bg-card',
+        secondary: 'border border-border/60 bg-secondary',
+        ghost: 'bg-transparent',
+      },
+      size: {
+        default: 'h-11 px-4 py-2',
+        sm: 'h-9 rounded-md px-3',
+        lg: 'h-12 rounded-lg px-6',
+        icon: 'h-10 w-10',
+      },
     },
-    size: {
-      default: 'h-11 px-4 py-2',
-      sm: 'h-9 rounded-md px-3',
-      lg: 'h-12 rounded-lg px-6',
-      icon: 'h-10 w-10',
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
     },
-  },
-  defaultVariants: {
-    variant: 'default',
-    size: 'default',
-  },
-});
+  }
+);
 
 const buttonTextVariants = cva('text-sm font-semibold', {
   variants: {
@@ -82,13 +85,6 @@ function getButtonTextClass(
   return cached;
 }
 
-const pressStyles = StyleSheet.create({
-  pressed: {
-    transform: [{ scale: 0.97 }],
-    opacity: 0.84,
-  },
-});
-
 export interface ButtonProps
   extends Omit<PressableProps, 'children'>,
     VariantProps<typeof buttonVariants> {
@@ -128,11 +124,7 @@ export const Button = React.forwardRef<React.ElementRef<typeof Pressable>, Butto
           disabled={disabled}
           onPressIn={handlePressIn}
           className={resolvedClassName}
-          style={
-            typeof style === 'function'
-              ? (state) => [state.pressed && !disabled ? pressStyles.pressed : undefined, style(state)]
-              : ({ pressed }) => [pressed && !disabled ? pressStyles.pressed : undefined, style]
-          }
+          style={typeof style === 'function' ? undefined : style}
           {...props}
         >
           {children}

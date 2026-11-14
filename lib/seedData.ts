@@ -359,7 +359,7 @@ export function buildInitialDemoData(): AppDataState {
 
   return {
     version: 2,
-    themePreference: 'dark',
+    themePreference: 'light',
     isDemoSeeded: true,
     splits: [pplul, pplx2, fullBody],
     logs,
@@ -377,7 +377,7 @@ export function buildCleanEmptyData(): AppDataState {
   const starterSplit = createPresetSplit('pplul', today);
   return {
     version: 2,
-    themePreference: 'dark',
+    themePreference: 'light',
     isDemoSeeded: false,
     splits: [starterSplit],
     logs: [],

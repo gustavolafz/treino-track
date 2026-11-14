@@ -360,7 +360,7 @@ export default function EvolucaoScreen() {
       <View className="px-4">
         {/* Header */}
         <View className="flex-row items-center justify-between py-3">
-          <View>
+          <View className="flex-1 pr-2">
             <Text className="text-xl font-bold tracking-tight text-foreground">
               Evolução & Gráficos
             </Text>

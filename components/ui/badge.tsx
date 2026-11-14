@@ -8,12 +8,12 @@ const badgeVariants = cva('flex-row items-center gap-1 rounded-full border px-2.
   variants: {
     variant: {
       default: 'border-transparent bg-primary',
-      secondary: 'border-transparent bg-secondary',
+      secondary: 'border-border/50 bg-secondary',
       outline: 'border-border bg-transparent',
-      destructive: 'border-transparent bg-destructive/15 border-destructive/40',
-      success: 'border-emerald-500/30 bg-emerald-500/15',
-      warning: 'border-amber-500/30 bg-amber-500/15',
-      info: 'border-blue-500/30 bg-blue-500/15',
+      destructive: 'border-red-500/35 bg-red-500/12',
+      success: 'border-emerald-500/35 bg-emerald-500/12',
+      warning: 'border-amber-500/35 bg-amber-500/15',
+      info: 'border-blue-500/35 bg-blue-500/12',
     },
   },
   defaultVariants: {
@@ -27,10 +27,10 @@ const badgeTextVariants = cva('text-xs font-semibold', {
       default: 'text-primary-foreground',
       secondary: 'text-secondary-foreground',
       outline: 'text-foreground',
-      destructive: 'text-red-500',
-      success: 'text-emerald-500',
-      warning: 'text-amber-500',
-      info: 'text-blue-500',
+      destructive: 'text-red-600 dark:text-red-400',
+      success: 'text-emerald-600 dark:text-emerald-400',
+      warning: 'text-amber-600 dark:text-amber-400',
+      info: 'text-blue-600 dark:text-blue-400',
     },
   },
   defaultVariants: {

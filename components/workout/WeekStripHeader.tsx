@@ -47,12 +47,17 @@ const WeekProgressCard = React.memo(function WeekProgressCard({
   return (
     <Card className="mb-3">
       <CardContent className="pt-4">
-        <View className="mb-2 flex-row items-center justify-between">
-          <Text className="text-xs font-medium text-muted-foreground">
+        <View className="mb-2 flex-row items-center justify-between gap-2">
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.8}
+            className="flex-1 text-xs font-medium text-muted-foreground"
+          >
             Semana de {formatShortDateCached(weekMonday)} a{' '}
             {formatShortDateCached(addDaysCached(weekMonday, 6))}
           </Text>
-          <View className="flex-row items-center gap-1.5">
+          <View className="shrink-0 flex-row items-center gap-1.5">
             {skippedCount > 0 ? (
               <Badge variant="warning">
                 <Text>{skippedCount} skip</Text>

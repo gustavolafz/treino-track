@@ -526,17 +526,19 @@ export default function TreinoScreen() {
           {/* State 3: Active / Completed Workout Quick Controls */}
           {currentLog && currentLog.status !== 'skipped' ? (
             <CardContent className="pt-0">
-              <View className="flex-row flex-wrap items-center gap-2">
+              <View className="flex-row flex-wrap items-center gap-1.5">
                 <Button
                   variant="outline"
                   size="sm"
+                  className="px-2.5"
                   onPress={() => setSwitchDialogOpen(true)}
                 >
-                  <Text>Trocar treino</Text>
+                  <Text>Trocar</Text>
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
+                  className="px-2.5"
                   onPress={() => setAddExerciseOpen(true)}
                 >
                   <Plus size={14} color={iconPrimary} />
@@ -545,14 +547,16 @@ export default function TreinoScreen() {
                 <Button
                   variant="outline"
                   size="sm"
+                  className="px-2.5"
                   onPress={() => setSkipDialogOpen(true)}
                 >
                   <SkipForward size={14} color="#f59e0b" />
-                  <Text className="text-amber-500">Skipar</Text>
+                  <Text className="text-amber-600 dark:text-amber-500">Skipar</Text>
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
+                  className="px-2"
                   onPress={() => deleteWorkoutLog(selectedDate)}
                 >
                   <Trash2 size={14} color="#ef4444" />

@@ -39,7 +39,7 @@ export function parseBackupPayload(rawJson: string): AppDataState {
   }
   return {
     version: candidate.version ?? 1,
-    themePreference: candidate.themePreference === 'light' ? 'light' : 'dark',
+    themePreference: candidate.themePreference === 'dark' ? 'dark' : 'light',
     isDemoSeeded: Boolean(candidate.isDemoSeeded),
     splits: candidate.splits,
     logs: candidate.logs,

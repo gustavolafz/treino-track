@@ -42,7 +42,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           if (parsed && Array.isArray(parsed.splits) && parsed.splits.length > 0) {
             if ((parsed.version ?? 1) < 2 && parsed.isDemoSeeded) {
               const upgraded = buildInitialDemoData();
-              upgraded.themePreference = parsed.themePreference ?? 'dark';
+              upgraded.themePreference = parsed.themePreference ?? 'light';
               upgraded.backupConfig = parsed.backupConfig ?? upgraded.backupConfig;
               useWorkoutStore.getState().actions.replaceAllData(upgraded);
             } else {

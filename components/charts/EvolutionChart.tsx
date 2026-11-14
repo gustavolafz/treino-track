@@ -286,7 +286,29 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
     [cursorX, padTop, plotH]
   );
 
-  const labelStep = pts.length > 6 ? Math.ceil(pts.length / 5) : 1;
+  const visibleXLabelIndices = useMemo(() => {
+    const shown = new Set<number>();
+    if (pts.length === 0) return shown;
+    shown.add(0);
+    const lastIdx = pts.length - 1;
+    const minGapPx = 46;
+    if (lastIdx > 0 && pts[lastIdx].x - pts[0].x >= 34) {
+      shown.add(lastIdx);
+    }
+    const step = pts.length > 6 ? Math.ceil(pts.length / 5) : 1;
+    let lastShownX = pts[0].x;
+    for (let i = 1; i < lastIdx; i++) {
+      if (i % step !== 0) continue;
+      const px = pts[i].x;
+      const distFromPrev = px - lastShownX;
+      const distFromLast = shown.has(lastIdx) ? pts[lastIdx].x - px : Infinity;
+      if (distFromPrev >= minGapPx && distFromLast >= minGapPx) {
+        shown.add(i);
+        lastShownX = px;
+      }
+    }
+    return shown;
+  }, [pts]);
 
   return (
     <Card className="p-4">
@@ -378,13 +400,12 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
 
             {/* X-axis labels */}
             {pts.map((p, idx) => {
-              const show = idx === 0 || idx === pts.length - 1 || idx % labelStep === 0;
-              if (!show) return null;
+              if (!visibleXLabelIndices.has(idx)) return null;
               return (
                 <Text
                   key={idx}
-                  className="pointer-events-none absolute w-11 text-center text-[10px] text-muted-foreground"
-                  style={{ left: Math.max(padLeft - 14, Math.min(width - 46, p.x - 22)), top: height - 18 }}
+                  className="pointer-events-none absolute w-12 text-center text-[10px] text-muted-foreground"
+                  style={{ left: Math.max(padLeft - 14, Math.min(width - 48, p.x - 24)), top: height - 18 }}
                   numberOfLines={1}
                 >
                   {p.label}
@@ -433,10 +454,10 @@ export const ConsistencyBarChart = React.memo(function ConsistencyBarChart({
     if (w > 0) setWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
   }, []);
 
-  const height = 165;
+  const height = 178;
   const padLeft = 28;
   const padRight = 12;
-  const padTop = 14;
+  const padTop = 26;
   const padBottom = 26;
   const plotW = Math.max(40, width - padLeft - padRight);
   const plotH = height - padTop - padBottom;
@@ -548,7 +569,7 @@ export const ConsistencyBarChart = React.memo(function ConsistencyBarChart({
                   className="pointer-events-none absolute w-7 text-center text-[10px] font-bold text-foreground tabular-nums"
                   style={{
                     left: b.centerX - 14,
-                    top: Math.max(2, (b.skipH > 0 ? b.skipY : b.compY) - 14),
+                    top: Math.max(4, (b.skipH > 0 ? b.skipY : b.compY) - 17),
                   }}
                 >
                   {b.d.completed}

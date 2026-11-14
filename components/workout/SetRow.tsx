@@ -110,19 +110,19 @@ const darkPalette = StyleSheet.create({
   checkIdle: { backgroundColor: '#18181b', borderColor: '#3f3f46' },
   checkDone: { backgroundColor: '#10b981', borderColor: '#10b981' },
   glyphIdle: { borderColor: '#71717a' },
-  glyphDone: { borderColor: '#09090b' },
+  glyphDone: { borderColor: '#ffffff' },
   removeBar: { backgroundColor: '#71717a' },
 });
 
 const lightPalette = StyleSheet.create({
-  rowIdle: { backgroundColor: '#ffffff', borderColor: 'rgba(228,228,231,0.9)' },
+  rowIdle: { backgroundColor: '#fafafa', borderColor: '#e4e4e7' },
   rowDone: { backgroundColor: '#ecfdf5', borderColor: '#6ee7b7' },
   mutedText: { color: '#71717a' },
-  input: { backgroundColor: '#fafafa', borderColor: '#e4e4e7', color: '#09090b' },
-  checkIdle: { backgroundColor: '#f4f4f5', borderColor: '#d4d4d8' },
+  input: { backgroundColor: '#ffffff', borderColor: '#d4d4d8', color: '#09090b' },
+  checkIdle: { backgroundColor: '#ffffff', borderColor: '#d4d4d8' },
   checkDone: { backgroundColor: '#10b981', borderColor: '#10b981' },
   glyphIdle: { borderColor: '#a1a1aa' },
-  glyphDone: { borderColor: '#09090b' },
+  glyphDone: { borderColor: '#ffffff' },
   removeBar: { backgroundColor: '#a1a1aa' },
 });
 
@@ -255,16 +255,10 @@ export const SetRow = React.memo(function SetRow({
         style={[styles.inputBase, styles.repsInput, p.input]}
       />
 
-      <Pressable
-        onPress={handleToggleCompleted}
-        hitSlop={4}
-        style={({ pressed }) => [
-          styles.checkBtn,
-          set.completed ? p.checkDone : p.checkIdle,
-          pressed ? styles.checkBtnPressed : undefined,
-        ]}
-      >
-        <View style={[styles.checkGlyph, set.completed ? p.glyphDone : p.glyphIdle]} />
+      <Pressable onPress={handleToggleCompleted} hitSlop={4}>
+        <View style={[styles.checkBtn, set.completed ? p.checkDone : p.checkIdle]}>
+          <View style={[styles.checkGlyph, set.completed ? p.glyphDone : p.glyphIdle]} />
+        </View>
       </Pressable>
 
       {canRemove ? (
@@ -274,9 +268,10 @@ export const SetRow = React.memo(function SetRow({
             onRemove(set.id);
           }}
           hitSlop={6}
-          style={({ pressed }) => [styles.removeBtn, pressed ? { opacity: 0.55 } : undefined]}
         >
-          <View style={[styles.removeBar, p.removeBar]} />
+          <View style={styles.removeBtn}>
+            <View style={[styles.removeBar, p.removeBar]} />
+          </View>
         </Pressable>
       ) : (
         <View style={styles.removeSpacer} />

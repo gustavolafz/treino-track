@@ -61,6 +61,8 @@ function GoogleDriveAuthPanel({
   iosClientId: string;
   onStatusMessage: (msg: string, isError?: boolean) => void;
 }) {
+  const isDark = useThemePreference() === 'dark';
+  const primaryFgColor = isDark ? '#18181b' : '#fafafa';
   const backupConfig = useWorkoutStore((s) => s.data.backupConfig);
   const { updateBackupConfig, replaceAllData } = useStoreActions();
   const [busy, setBusy] = useState(false);
@@ -159,7 +161,7 @@ function GoogleDriveAuthPanel({
 
       {!accessToken ? (
         <Button disabled={!request || busy} onPress={() => promptAsync()}>
-          <Cloud size={16} color="#18181b" />
+          <Cloud size={16} color={primaryFgColor} />
           <Text>Conectar com Google</Text>
         </Button>
       ) : (
@@ -168,7 +170,7 @@ function GoogleDriveAuthPanel({
             {busy ? (
               <ActivityIndicator size="small" />
             ) : (
-              <CloudUpload size={16} color="#18181b" />
+              <CloudUpload size={16} color={primaryFgColor} />
             )}
             <Text>Enviar pro Drive</Text>
           </Button>

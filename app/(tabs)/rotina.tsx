@@ -77,7 +77,7 @@ const WorkoutTemplateCard = React.memo(function WorkoutTemplateCard({
     <Card className="mb-3">
       <CardHeader className="pb-2">
         <View className="flex-row items-center justify-between">
-          <View>
+          <View className="flex-1 pr-2">
             <CardTitle>{wk.name}</CardTitle>
             <CardDescription>
               {wk.exercises.length} exercícios • Meta total: {totalSets} séries
@@ -212,8 +212,8 @@ const SplitCard = React.memo(function SplitCard({
           ))}
         </View>
 
-        <View className="flex-row items-center justify-between">
-          <Text className="text-xs text-muted-foreground">
+        <View className="flex-row items-center justify-between gap-2">
+          <Text className="flex-1 pr-2 text-xs text-muted-foreground">
             Desde {formatShortDateCached(split.startedAt)}
             {split.endedAt ? ` até ${formatShortDateCached(split.endedAt)}` : ''}
             {logsCount > 0 ? ` • ${logsCount} treinos` : ''}

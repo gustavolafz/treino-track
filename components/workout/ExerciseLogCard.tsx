@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 8,
+    paddingHorizontal: 9,
   },
   colHeader: {
     fontSize: 10,
@@ -219,14 +219,11 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
                 triggerNativeHaptic('tap');
                 handleStartRest();
               }}
-              style={({ pressed }) => [
-                styles.pill,
-                c.secPill,
-                pressed ? { opacity: 0.75 } : undefined,
-              ]}
             >
-              <Clock size={10} color={iconPrimary} />
-              <RNText style={[styles.pillText, c.title]}>{restSecs}s</RNText>
+              <View style={[styles.pill, c.secPill]}>
+                <Clock size={10} color={iconPrimary} />
+                <RNText style={[styles.pillText, c.title]}>{restSecs}s</RNText>
+              </View>
             </Pressable>
 
             {hitRepsGoal ? (
@@ -254,9 +251,10 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
             onRemoveExercise(dateISO, exercise.id);
           }}
           hitSlop={8}
-          style={({ pressed }) => [styles.trashBtn, pressed ? { opacity: 0.6 } : undefined]}
         >
-          <Trash2 size={16} color={isDark ? '#71717a' : '#a1a1aa'} />
+          <View style={styles.trashBtn}>
+            <Trash2 size={16} color={isDark ? '#71717a' : '#a1a1aa'} />
+          </View>
         </Pressable>
       </View>
 
@@ -289,14 +287,11 @@ export const ExerciseLogCard = React.memo(function ExerciseLogCard({
           triggerNativeHaptic('tap');
           onAddSet(dateISO, exercise.id);
         }}
-        style={({ pressed }) => [
-          styles.addSetBtn,
-          c.addSetBorder,
-          pressed ? { opacity: 0.75 } : undefined,
-        ]}
       >
-        <Plus size={14} color={isDark ? '#a1a1aa' : '#52525b'} />
-        <RNText style={[styles.addSetText, c.muted]}>Adicionar série</RNText>
+        <View style={[styles.addSetBtn, c.addSetBorder]}>
+          <Plus size={14} color={isDark ? '#a1a1aa' : '#52525b'} />
+          <RNText style={[styles.addSetText, c.muted]}>Adicionar série</RNText>
+        </View>
       </Pressable>
     </View>
   );

@@ -12,6 +12,7 @@ function getMmkv(): MMKV {
 
 const KEYS = {
   THEME: 'meta:themePreference',
+  THEME_USER_SET: 'meta:themeUserSet',
   IS_DEMO_SEEDED: 'meta:isDemoSeeded',
   VERSION: 'meta:version',
   BACKUP_CONFIG: 'meta:backupConfig',
@@ -36,8 +37,10 @@ export interface MmkvMetaState {
 
 export function readMetaFromMmkv(): MmkvMetaState {
   const mmkv = getMmkv();
+  const userSetTheme = mmkv.getBoolean(KEYS.THEME_USER_SET) ?? false;
   const rawTheme = mmkv.getString(KEYS.THEME);
-  const themePreference: 'dark' | 'light' = rawTheme === 'light' ? 'light' : 'dark';
+  const themePreference: 'dark' | 'light' =
+    userSetTheme && rawTheme === 'dark' ? 'dark' : 'light';
   const version = mmkv.getNumber(KEYS.VERSION) ?? 1;
   const isDemoSeeded = mmkv.getBoolean(KEYS.IS_DEMO_SEEDED) ?? false;
   const sqliteInitialized = mmkv.getBoolean(KEYS.SQLITE_INITIALIZED) ?? false;
@@ -64,7 +67,9 @@ export function readMetaFromMmkv(): MmkvMetaState {
 }
 
 export function writeThemeMmkv(theme: 'dark' | 'light'): void {
-  getMmkv().set(KEYS.THEME, theme);
+  const mmkv = getMmkv();
+  mmkv.set(KEYS.THEME, theme);
+  mmkv.set(KEYS.THEME_USER_SET, true);
 }
 
 export function writeBackupConfigMmkv(config: BackupConfig): void {

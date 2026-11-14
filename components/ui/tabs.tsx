@@ -81,7 +81,7 @@ export function TabsTrigger({ value, children, className, ...props }: TabsTrigge
         }}
         className={cn(
           'flex-1 flex-row items-center justify-center rounded-md px-3 py-2',
-          active && 'bg-background shadow-sm',
+          active && 'border border-border/70 bg-card shadow-sm',
           className
         )}
         {...props}

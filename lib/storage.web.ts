@@ -36,6 +36,7 @@ export interface MmkvMetaState {
 }
 
 export function readMetaFromMmkv(): MmkvMetaState {
+  const userSetTheme = getItem('themeUserSet') === '1';
   const rawTheme = getItem('themePreference');
   const rawBackup = getItem('backupConfig');
   let backupConfig: BackupConfig = { ...DEFAULT_BACKUP_CONFIG };
@@ -48,7 +49,7 @@ export function readMetaFromMmkv(): MmkvMetaState {
   }
   return {
     version: Number(getItem('version') ?? '1') || 1,
-    themePreference: rawTheme === 'light' ? 'light' : 'dark',
+    themePreference: userSetTheme && rawTheme === 'dark' ? 'dark' : 'light',
     isDemoSeeded: getItem('isDemoSeeded') === '1',
     backupConfig,
     sqliteInitialized: getItem('sqliteInitialized') === '1',
@@ -58,6 +59,7 @@ export function readMetaFromMmkv(): MmkvMetaState {
 
 export function writeThemeMmkv(theme: 'dark' | 'light'): void {
   setItem('themePreference', theme);
+  setItem('themeUserSet', '1');
 }
 
 export function writeBackupConfigMmkv(config: BackupConfig): void {

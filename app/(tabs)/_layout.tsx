@@ -2,11 +2,12 @@ import { Tabs } from 'expo-router';
 import { CalendarRange, Cloud, Dumbbell, TrendingUp } from 'lucide-react-native';
 import React from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAppStore } from '@/store/AppContext';
+import { triggerNativeHaptic } from '@/modules/treino-native';
+import { useThemePreference } from '@/store/useWorkoutStore';
 
 export default function TabLayout() {
-  const { state } = useAppStore();
-  const isDark = state.themePreference === 'dark';
+  const themePreference = useThemePreference();
+  const isDark = themePreference === 'dark';
   const insets = useSafeAreaInsets();
   const bottomPad = Math.max(insets.bottom, 10);
 
@@ -17,8 +18,15 @@ export default function TabLayout() {
 
   return (
     <Tabs
+      screenListeners={{
+        tabPress: () => {
+          triggerNativeHaptic('tap');
+        },
+      }}
       screenOptions={{
         headerShown: false,
+        freezeOnBlur: true,
+        lazy: true,
         tabBarActiveTintColor: active,
         tabBarInactiveTintColor: inactive,
         tabBarStyle: {

@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { Pressable, View, type PressableProps, type ViewProps } from 'react-native';
+import { triggerNativeHaptic } from '@/modules/treino-native';
 import { TextClassContext } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 
 interface TabsContextValue {
   value: string;
   onValueChange: (value: string) => void;
+  visited: Record<string, boolean>;
 }
 
 const TabsContext = React.createContext<TabsContextValue | null>(null);
@@ -16,8 +18,25 @@ export interface TabsProps extends ViewProps {
 }
 
 export function Tabs({ value, onValueChange, className, children, ...props }: TabsProps) {
+  const [visited, setVisited] = React.useState<Record<string, boolean>>(() => ({
+    [value]: true,
+  }));
+
+  const handleValueChange = React.useCallback(
+    (next: string) => {
+      setVisited((prev) => (prev[next] ? prev : { ...prev, [next]: true }));
+      onValueChange(next);
+    },
+    [onValueChange]
+  );
+
+  const ctxValue = React.useMemo(
+    () => ({ value, onValueChange: handleValueChange, visited }),
+    [value, handleValueChange, visited]
+  );
+
   return (
-    <TabsContext.Provider value={{ value, onValueChange }}>
+    <TabsContext.Provider value={ctxValue}>
       <View className={cn('w-full', className)} {...props}>
         {children}
       </View>
@@ -56,7 +75,10 @@ export function TabsTrigger({ value, children, className, ...props }: TabsTrigge
       )}
     >
       <Pressable
-        onPress={() => ctx.onValueChange(value)}
+        onPress={() => {
+          triggerNativeHaptic('tap');
+          ctx.onValueChange(value);
+        }}
         className={cn(
           'flex-1 flex-row items-center justify-center rounded-md px-3 py-2',
           active && 'bg-background shadow-sm',
@@ -72,13 +94,31 @@ export function TabsTrigger({ value, children, className, ...props }: TabsTrigge
 
 export interface TabsContentProps extends ViewProps {
   value: string;
+  keepMounted?: boolean;
 }
 
-export function TabsContent({ value, className, children, ...props }: TabsContentProps) {
+const HIDDEN_TAB_STYLE = { display: 'none' } as const;
+
+export function TabsContent({
+  value,
+  keepMounted = false,
+  className,
+  style,
+  children,
+  ...props
+}: TabsContentProps) {
   const ctx = React.useContext(TabsContext);
-  if (!ctx || ctx.value !== value) return null;
+  const isActive = !!ctx && ctx.value === value;
+  const isMounted = isActive || (keepMounted && !!ctx?.visited[value]);
+
+  if (!isMounted) return null;
+
   return (
-    <View className={cn('mt-3', className)} {...props}>
+    <View
+      className={cn('mt-3', className)}
+      style={isActive ? style : [style, HIDDEN_TAB_STYLE]}
+      {...props}
+    >
       {children}
     </View>
   );

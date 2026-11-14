@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { Text, type TextProps } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store/AppContext';
+import { useThemePreference } from '@/store/useWorkoutStore';
 
 export interface DialogProps {
   open: boolean;
@@ -19,8 +19,10 @@ export interface DialogProps {
 }
 
 export function Dialog({ open, onOpenChange, children }: DialogProps) {
-  const { state } = useAppStore();
-  const isDark = state.themePreference === 'dark';
+  const themePreference = useThemePreference();
+  const isDark = themePreference === 'dark';
+
+  if (!open) return null;
 
   return (
     <Modal

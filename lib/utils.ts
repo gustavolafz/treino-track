@@ -1,7 +1,43 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
+const CN_CACHE = new Map<string, string>();
+const CN_CACHE_MAX = 1500;
+
 export function cn(...inputs: ClassValue[]) {
+  if (inputs.length === 1 && typeof inputs[0] === 'string') {
+    const key = inputs[0];
+    const hit = CN_CACHE.get(key);
+    if (hit !== undefined) return hit;
+    const resolved = twMerge(key);
+    if (CN_CACHE.size >= CN_CACHE_MAX) CN_CACHE.clear();
+    CN_CACHE.set(key, resolved);
+    return resolved;
+  }
+
+  let cacheable = true;
+  let key = '';
+  for (let i = 0; i < inputs.length; i++) {
+    const item = inputs[i];
+    if (typeof item === 'string') {
+      key += item + '\u0000';
+    } else if (item === false || item === null || item === undefined) {
+      key += '\u0001';
+    } else {
+      cacheable = false;
+      break;
+    }
+  }
+
+  if (cacheable) {
+    const hit = CN_CACHE.get(key);
+    if (hit !== undefined) return hit;
+    const resolved = twMerge(clsx(inputs));
+    if (CN_CACHE.size >= CN_CACHE_MAX) CN_CACHE.clear();
+    CN_CACHE.set(key, resolved);
+    return resolved;
+  }
+
   return twMerge(clsx(inputs));
 }
 

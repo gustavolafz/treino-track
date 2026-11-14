@@ -38,16 +38,47 @@ const badgeTextVariants = cva('text-xs font-semibold', {
   },
 });
 
+type BadgeVariant = NonNullable<VariantProps<typeof badgeVariants>['variant']>;
+
+const BADGE_CLASS_CACHE = new Map<BadgeVariant, string>();
+const BADGE_TEXT_CACHE = new Map<BadgeVariant, string>();
+
+function getBadgeClass(variant: BadgeVariant | null | undefined): string {
+  const v: BadgeVariant = variant ?? 'default';
+  let hit = BADGE_CLASS_CACHE.get(v);
+  if (!hit) {
+    hit = badgeVariants({ variant: v });
+    BADGE_CLASS_CACHE.set(v, hit);
+  }
+  return hit;
+}
+
+function getBadgeTextClass(variant: BadgeVariant | null | undefined): string {
+  const v: BadgeVariant = variant ?? 'default';
+  let hit = BADGE_TEXT_CACHE.get(v);
+  if (!hit) {
+    hit = badgeTextVariants({ variant: v });
+    BADGE_TEXT_CACHE.set(v, hit);
+  }
+  return hit;
+}
+
 export interface BadgeProps extends ViewProps, VariantProps<typeof badgeVariants> {
   children: React.ReactNode;
 }
 
-export function Badge({ className, variant, children, ...props }: BadgeProps) {
+export const Badge = React.memo(function Badge({
+  className,
+  variant,
+  children,
+  ...props
+}: BadgeProps) {
+  const baseClass = getBadgeClass(variant);
   return (
-    <TextClassContext.Provider value={badgeTextVariants({ variant })}>
-      <View className={cn(badgeVariants({ variant }), className)} {...props}>
+    <TextClassContext.Provider value={getBadgeTextClass(variant)}>
+      <View className={className ? cn(baseClass, className) : baseClass} {...props}>
         {children}
       </View>
     </TextClassContext.Provider>
   );
-}
+});

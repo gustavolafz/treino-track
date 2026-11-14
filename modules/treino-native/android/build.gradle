@@ -1,0 +1,43 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+def reactNativeArchitectures() {
+  def value = project.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
+group = 'com.treinotrack.nativeengine'
+version = '1.0.0'
+
+expoModule {
+  v2 true
+}
+
+android {
+  namespace "com.treinotrack.nativeengine"
+  defaultConfig {
+    versionCode 1
+    versionName "1.0.0"
+
+    externalNativeBuild {
+      cmake {
+        abiFilters (*reactNativeArchitectures())
+        arguments "-DANDROID_STL=c++_shared",
+          "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
+        cppFlags "-std=c++20 -O3 -ffast-math -fvisibility=hidden -Wall -Wextra"
+      }
+    }
+  }
+
+  externalNativeBuild {
+    cmake {
+      path "src/main/cpp/CMakeLists.txt"
+    }
+  }
+
+  packagingOptions {
+    excludes += ["**/libc++_shared.so"]
+  }
+}

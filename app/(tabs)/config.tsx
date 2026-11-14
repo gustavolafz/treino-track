@@ -42,7 +42,11 @@ import {
   restoreBackupFromGoogleDrive,
   uploadBackupToGoogleDrive,
 } from '@/lib/backupService';
-import { useAppStore } from '@/store/AppContext';
+import {
+  useStoreActions,
+  useThemePreference,
+  useWorkoutStore,
+} from '@/store/useWorkoutStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -57,7 +61,8 @@ function GoogleDriveAuthPanel({
   iosClientId: string;
   onStatusMessage: (msg: string, isError?: boolean) => void;
 }) {
-  const { state, updateBackupConfig, replaceAllData } = useAppStore();
+  const backupConfig = useWorkoutStore((s) => s.data.backupConfig);
+  const { updateBackupConfig, replaceAllData } = useStoreActions();
   const [busy, setBusy] = useState(false);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -98,7 +103,10 @@ function GoogleDriveAuthPanel({
     }
     setBusy(true);
     try {
-      const res = await uploadBackupToGoogleDrive(accessToken, state);
+      const res = await uploadBackupToGoogleDrive(
+        accessToken,
+        useWorkoutStore.getState().actions.getFullAppDataSnapshot()
+      );
       updateBackupConfig({
         lastBackupAt: res.updatedAt,
         lastBackupTarget: 'google_drive',
@@ -121,7 +129,7 @@ function GoogleDriveAuthPanel({
       const { data } = await restoreBackupFromGoogleDrive(accessToken);
       replaceAllData({
         ...data,
-        backupConfig: state.backupConfig,
+        backupConfig,
       });
       onStatusMessage('Dados restaurados do Google Drive com sucesso!');
     } catch (err: any) {
@@ -139,8 +147,8 @@ function GoogleDriveAuthPanel({
             {accessToken ? 'Sessão Google Drive Ativa' : 'Pronto para conectar'}
           </Text>
           <Text className="text-[11px] text-muted-foreground">
-            {state.backupConfig.connectedEmail
-              ? `Conta: ${state.backupConfig.connectedEmail}`
+            {backupConfig.connectedEmail
+              ? `Conta: ${backupConfig.connectedEmail}`
               : 'Faça login para salvar e restaurar no Drive'}
           </Text>
         </View>
@@ -180,16 +188,20 @@ function GoogleDriveAuthPanel({
 }
 
 export default function ConfigScreen() {
+  const themePreference = useThemePreference();
+  const backupConfig = useWorkoutStore((s) => s.data.backupConfig);
+  const splitsCount = useWorkoutStore((s) => s.data.splits.length);
+  const logsCount = useWorkoutStore((s) => s.data.logs.length);
+  const bodyMetricsCount = useWorkoutStore((s) => s.data.bodyMetrics.length);
   const {
-    state,
     toggleTheme,
     updateBackupConfig,
     replaceAllData,
     clearDemoData,
     reloadDemoData,
-  } = useAppStore();
+  } = useStoreActions();
 
-  const isDark = state.themePreference === 'dark';
+  const isDark = themePreference === 'dark';
   const iconPrimary = isDark ? '#fafafa' : '#18181b';
 
   const [statusBanner, setStatusBanner] = useState<{
@@ -200,16 +212,16 @@ export default function ConfigScreen() {
 
   // Client ID config modal
   const [clientDialogOpen, setClientDialogOpen] = useState(false);
-  const [webId, setWebId] = useState(state.backupConfig.googleWebClientId);
-  const [androidId, setAndroidId] = useState(state.backupConfig.googleAndroidClientId);
-  const [iosId, setIosId] = useState(state.backupConfig.googleIosClientId);
+  const [webId, setWebId] = useState(backupConfig.googleWebClientId);
+  const [androidId, setAndroidId] = useState(backupConfig.googleAndroidClientId);
+  const [iosId, setIosId] = useState(backupConfig.googleIosClientId);
 
   const hasPlatformClientId = Boolean(
     Platform.select({
-      web: state.backupConfig.googleWebClientId,
-      android: state.backupConfig.googleAndroidClientId || state.backupConfig.googleWebClientId,
-      ios: state.backupConfig.googleIosClientId || state.backupConfig.googleWebClientId,
-      default: state.backupConfig.googleWebClientId,
+      web: backupConfig.googleWebClientId,
+      android: backupConfig.googleAndroidClientId || backupConfig.googleWebClientId,
+      ios: backupConfig.googleIosClientId || backupConfig.googleWebClientId,
+      default: backupConfig.googleWebClientId,
     })
   );
 
@@ -220,7 +232,7 @@ export default function ConfigScreen() {
   const handleLocalExport = async () => {
     setLocalBusy(true);
     try {
-      await exportBackupToLocalFile(state);
+      await exportBackupToLocalFile(useWorkoutStore.getState().actions.getFullAppDataSnapshot());
       updateBackupConfig({
         lastBackupAt: new Date().toISOString(),
         lastBackupTarget: 'local_file',
@@ -325,9 +337,9 @@ export default function ConfigScreen() {
                 variant="outline"
                 size="sm"
                 onPress={() => {
-                  setWebId(state.backupConfig.googleWebClientId);
-                  setAndroidId(state.backupConfig.googleAndroidClientId);
-                  setIosId(state.backupConfig.googleIosClientId);
+                  setWebId(backupConfig.googleWebClientId);
+                  setAndroidId(backupConfig.googleAndroidClientId);
+                  setIosId(backupConfig.googleIosClientId);
                   setClientDialogOpen(true);
                 }}
               >
@@ -343,9 +355,9 @@ export default function ConfigScreen() {
           <CardContent className="gap-3">
             {hasPlatformClientId ? (
               <GoogleDriveAuthPanel
-                webClientId={state.backupConfig.googleWebClientId}
-                androidClientId={state.backupConfig.googleAndroidClientId}
-                iosClientId={state.backupConfig.googleIosClientId}
+                webClientId={backupConfig.googleWebClientId}
+                androidClientId={backupConfig.googleAndroidClientId}
+                iosClientId={backupConfig.googleIosClientId}
                 onStatusMessage={showStatus}
               />
             ) : (
@@ -368,11 +380,11 @@ export default function ConfigScreen() {
               </View>
             )}
 
-            {state.backupConfig.lastBackupAt ? (
+            {backupConfig.lastBackupAt ? (
               <Text className="text-[11px] text-muted-foreground">
                 Último backup:{' '}
-                {new Date(state.backupConfig.lastBackupAt).toLocaleString('pt-BR')} (
-                {state.backupConfig.lastBackupTarget === 'google_drive'
+                {new Date(backupConfig.lastBackupAt).toLocaleString('pt-BR')} (
+                {backupConfig.lastBackupTarget === 'google_drive'
                   ? 'Google Drive'
                   : 'Arquivo Local'}
                 )
@@ -416,8 +428,8 @@ export default function ConfigScreen() {
           <CardHeader>
             <CardTitle>Aparência & Dados</CardTitle>
             <CardDescription>
-              {state.splits.length} divisões • {state.logs.length} dias registrados •{' '}
-              {state.bodyMetrics.length} medições corporais
+              {splitsCount} divisões • {logsCount} dias registrados •{' '}
+              {bodyMetricsCount} medições corporais
             </CardDescription>
           </CardHeader>
           <CardContent className="gap-3">

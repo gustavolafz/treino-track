@@ -1,18 +1,90 @@
-import React, { useMemo, useState } from 'react';
-import { LayoutChangeEvent, Pressable, ScrollView, View } from 'react-native';
-import Svg, {
+import {
+  Canvas,
   Circle,
-  Defs,
   Line,
   LinearGradient,
   Path,
-  Rect,
-  Stop,
-  Text as SvgText,
-} from 'react-native-svg';
+  RoundedRect,
+  Skia,
+  vec,
+} from '@shopify/react-native-skia';
+import React, { useCallback, useMemo, useState } from 'react';
+import { type LayoutChangeEvent, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimated';
+import { triggerNativeHaptic } from '@/modules/treino-native';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
-import { cn } from '@/lib/utils';
-import { useAppStore } from '@/store/AppContext';
+import { useThemePreference } from '@/store/useWorkoutStore';
+
+interface StaticLineGroupProps {
+  width: number;
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  plotH: number;
+  gridStroke: string;
+  dotBg: string;
+  accentColor: string;
+  yTicks: { val: number; y: number }[];
+  areaPath: ReturnType<typeof Skia.Path.MakeFromSVGString> extends infer P ? NonNullable<P> : never;
+  linePath: ReturnType<typeof Skia.Path.MakeFromSVGString> extends infer P ? NonNullable<P> : never;
+  pts: { x: number; y: number }[];
+}
+
+const StaticLineGroup = React.memo(function StaticLineGroup({
+  width,
+  padLeft,
+  padRight,
+  padTop,
+  plotH,
+  gridStroke,
+  dotBg,
+  accentColor,
+  yTicks,
+  areaPath,
+  linePath,
+  pts,
+}: StaticLineGroupProps) {
+  return (
+    <>
+      {yTicks.map((t, idx) => (
+        <Line
+          key={idx}
+          p1={vec(padLeft, t.y)}
+          p2={vec(width - padRight, t.y)}
+          color={gridStroke}
+          strokeWidth={1}
+        />
+      ))}
+
+      <Path path={areaPath} style="fill">
+        <LinearGradient
+          start={vec(0, padTop)}
+          end={vec(0, padTop + plotH)}
+          colors={[`${accentColor}55`, `${accentColor}03`]}
+        />
+      </Path>
+
+      <Path
+        path={linePath}
+        color={accentColor}
+        style="stroke"
+        strokeWidth={2.5}
+        strokeCap="round"
+        strokeJoin="round"
+      />
+
+      {pts.map((p, idx) => (
+        <React.Fragment key={idx}>
+          <Circle cx={p.x} cy={p.y} r={3.5} color={dotBg} />
+          <Circle cx={p.x} cy={p.y} r={2.5} color={accentColor} />
+        </React.Fragment>
+      ))}
+    </>
+  );
+});
 
 export interface ChartPoint {
   label: string;
@@ -30,273 +102,310 @@ interface EvolutionLineChartProps {
   height?: number;
 }
 
-export function EvolutionLineChart({
+export const EvolutionLineChart = React.memo(function EvolutionLineChart({
   title,
   subtitle,
   unit,
   data,
   accentColor = '#10b981',
-  emptyMessage = 'Sem dados suficientes para exibir o gráfico.',
-  height = 190,
+  emptyMessage = 'Sem dados suficientes no período selecionado.',
+  height = 185,
 }: EvolutionLineChartProps) {
-  const { state } = useAppStore();
-  const isDark = state.themePreference === 'dark';
+  const themePreference = useThemePreference();
+  const isDark = themePreference === 'dark';
   const [width, setWidth] = useState(320);
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
 
-  const onLayout = (e: LayoutChangeEvent) => {
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
     const w = e.nativeEvent.layout.width;
-    if (w > 0) setWidth(w);
-  };
+    if (w > 0) setWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+  }, []);
 
-  const activeIndex =
-    selectedIndex !== null && selectedIndex < data.length
-      ? selectedIndex
-      : data.length > 0
-        ? data.length - 1
-        : null;
-
-  const activePoint = activeIndex !== null ? data[activeIndex] : null;
-  const firstVal = data.length > 0 ? data[0].value : 0;
-  const lastVal = data.length > 0 ? data[data.length - 1].value : 0;
-  const delta = Math.round((lastVal - firstVal) * 10) / 10;
-
-  const padLeft = 42;
+  const padLeft = 40;
   const padRight = 14;
-  const padTop = 14;
-  const padBottom = 26;
-  const chartW = Math.max(120, width - padLeft - padRight);
-  const chartH = Math.max(80, height - padTop - padBottom);
+  const padTop = 16;
+  const padBottom = 28;
+  const plotW = Math.max(40, width - padLeft - padRight);
+  const plotH = Math.max(40, height - padTop - padBottom);
 
-  const { coords, linePath, areaPath, yTicks } = useMemo(() => {
-    if (data.length === 0) {
+  const gridStroke = isDark ? '#27272a' : '#e4e4e7';
+  const dotBg = isDark ? '#09090b' : '#ffffff';
+
+  const stats = useMemo(() => {
+    if (data.length === 0) return null;
+    const values = data.map((d) => d.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const latest = values[values.length - 1];
+    const first = values[0];
+    const delta = +(latest - first).toFixed(1);
+    const padding = max === min ? Math.max(1, max * 0.1) : (max - min) * 0.16;
+    const yMin = Math.max(0, min - padding);
+    const yMax = max + padding;
+    return { min, max, latest, first, delta, yMin, yMax };
+  }, [data]);
+
+  const { pts, xs, ys, linePath, areaPath, yTicks } = useMemo(() => {
+    if (!stats || data.length === 0) {
       return {
-        coords: [] as { x: number; y: number }[],
-        linePath: '',
-        areaPath: '',
+        pts: [] as { x: number; y: number; value: number; label: string; secondaryLabel?: string }[],
+        xs: [] as number[],
+        ys: [] as number[],
+        linePath: null as ReturnType<typeof Skia.Path.Make> | null,
+        areaPath: null as ReturnType<typeof Skia.Path.Make> | null,
         yTicks: [] as { val: number; y: number }[],
       };
     }
 
-    const values = data.map((d) => d.value);
-    const rawMin = Math.min(...values);
-    const rawMax = Math.max(...values);
-    const spread = rawMax - rawMin;
-    const padding = spread === 0 ? Math.max(1, rawMax * 0.1) : spread * 0.18;
-    const minV = Math.max(0, Math.floor((rawMin - padding) * 10) / 10);
-    const maxV = Math.ceil((rawMax + padding) * 10) / 10;
-    const range = maxV - minV || 1;
+    const { yMin, yMax } = stats;
+    const ySpan = Math.max(0.001, yMax - yMin);
 
-    const pts = data.map((d, idx) => {
+    const computedPts = data.map((d, i) => {
       const x =
         data.length === 1
-          ? padLeft + chartW / 2
-          : padLeft + (idx / (data.length - 1)) * chartW;
-      const y = padTop + chartH - ((d.value - minV) / range) * chartH;
-      return { x, y };
+          ? padLeft + plotW / 2
+          : padLeft + (i / (data.length - 1)) * plotW;
+      const ratio = (d.value - yMin) / ySpan;
+      const y = padTop + plotH - ratio * plotH;
+      return { x, y, ...d };
     });
 
-    const lPath = pts
-      .map((p, idx) => `${idx === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
-      .join(' ');
+    const lpBuilder = Skia.PathBuilder.Make();
+    const apBuilder = Skia.PathBuilder.Make();
 
-    const aPath =
-      pts.length > 1
-        ? `${lPath} L ${pts[pts.length - 1].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} L ${pts[0].x.toFixed(1)} ${(padTop + chartH).toFixed(1)} Z`
-        : '';
+    if (computedPts.length > 0) {
+      lpBuilder.moveTo(computedPts[0].x, computedPts[0].y);
+      apBuilder.moveTo(computedPts[0].x, padTop + plotH);
+      apBuilder.lineTo(computedPts[0].x, computedPts[0].y);
 
-    const ticks = [0, 0.5, 1].map((ratio) => {
-      const val = Math.round((minV + ratio * range) * 10) / 10;
-      const y = padTop + chartH - ratio * chartH;
-      return { val, y };
+      for (let i = 1; i < computedPts.length; i++) {
+        const prev = computedPts[i - 1];
+        const curr = computedPts[i];
+        const midX = (prev.x + curr.x) / 2;
+        lpBuilder.cubicTo(midX, prev.y, midX, curr.y, curr.x, curr.y);
+        apBuilder.cubicTo(midX, prev.y, midX, curr.y, curr.x, curr.y);
+      }
+
+      const last = computedPts[computedPts.length - 1];
+      apBuilder.lineTo(last.x, padTop + plotH);
+      apBuilder.close();
+    }
+
+    const lp = lpBuilder.detach();
+    const ap = apBuilder.detach();
+
+    const ticks = [0, 0.5, 1].map((t) => {
+      const val = yMin + t * ySpan;
+      const y = padTop + plotH - t * plotH;
+      return { val: Math.round(val * 10) / 10, y };
     });
 
     return {
-      coords: pts,
-      linePath: lPath,
-      areaPath: aPath,
+      pts: computedPts,
+      xs: computedPts.map((p) => p.x),
+      ys: computedPts.map((p) => p.y),
+      linePath: lp,
+      areaPath: ap,
       yTicks: ticks,
     };
-  }, [chartH, chartW, data]);
+  }, [stats, data, padLeft, padTop, plotW, plotH]);
 
-  const gridStroke = isDark ? '#27272a' : '#e4e4e7';
-  const labelFill = isDark ? '#a1a1aa' : '#71717a';
-  const reactId = React.useId();
-  const gradientId = `grad_${reactId.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const activeIdxSV = useSharedValue(-1);
+  const selectIndexJS = useCallback((idx: number | null) => {
+    setSelectedIndex((prev) => {
+      if (prev === idx) return prev;
+      if (idx !== null) triggerNativeHaptic('tap');
+      return idx;
+    });
+  }, []);
 
-  const labelStep = data.length <= 5 ? 1 : Math.ceil(data.length / 4);
+  const scrubGesture = useMemo(() => {
+    const count = pts.length;
+    const pan = Gesture.Pan()
+      .activeOffsetX([-8, 8])
+      .onBegin((e) => {
+        if (count === 0) return;
+        const idx =
+          count === 1
+            ? 0
+            : Math.max(
+                0,
+                Math.min(count - 1, Math.round(((e.x - padLeft) / plotW) * (count - 1)))
+              );
+        activeIdxSV.value = idx;
+        runOnJS(selectIndexJS)(idx);
+      })
+      .onUpdate((e) => {
+        if (count === 0) return;
+        const idx =
+          count === 1
+            ? 0
+            : Math.max(
+                0,
+                Math.min(count - 1, Math.round(((e.x - padLeft) / plotW) * (count - 1)))
+              );
+        if (activeIdxSV.value !== idx) {
+          activeIdxSV.value = idx;
+          runOnJS(selectIndexJS)(idx);
+        }
+      });
+
+    const tap = Gesture.Tap().onEnd((e) => {
+      if (count === 0) return;
+      const idx =
+        count === 1
+          ? 0
+          : Math.max(
+              0,
+              Math.min(count - 1, Math.round(((e.x - padLeft) / plotW) * (count - 1)))
+            );
+      activeIdxSV.value = idx;
+      runOnJS(selectIndexJS)(idx);
+    });
+
+    return Gesture.Race(pan, tap);
+  }, [pts.length, padLeft, plotW, activeIdxSV, selectIndexJS]);
+
+  const activeIdx =
+    selectedIndex !== null && selectedIndex < pts.length ? selectedIndex : pts.length - 1;
+  const activePoint = pts[activeIdx];
+
+  const cursorX = useDerivedValue(() => {
+    const idx = activeIdxSV.value >= 0 && activeIdxSV.value < xs.length ? activeIdxSV.value : xs.length - 1;
+    return xs[idx] ?? padLeft;
+  }, [xs, padLeft]);
+
+  const cursorY = useDerivedValue(() => {
+    const idx = activeIdxSV.value >= 0 && activeIdxSV.value < ys.length ? activeIdxSV.value : ys.length - 1;
+    return ys[idx] ?? padTop + plotH;
+  }, [ys, padTop, plotH]);
+
+  const cursorP1 = useDerivedValue(() => vec(cursorX.value, padTop), [cursorX, padTop]);
+  const cursorP2 = useDerivedValue(
+    () => vec(cursorX.value, padTop + plotH),
+    [cursorX, padTop, plotH]
+  );
+
+  const labelStep = pts.length > 6 ? Math.ceil(pts.length / 5) : 1;
 
   return (
-    <View className="rounded-xl border border-border bg-card p-4">
-      <View className="mb-3 flex-row items-start justify-between gap-2">
+    <Card className="p-4">
+      <View className="flex-row items-start justify-between gap-2">
         <View className="flex-1">
-          <Text className="text-sm font-semibold text-card-foreground">{title}</Text>
+          <Text className="text-base font-semibold text-foreground">{title}</Text>
           {subtitle ? (
-            <Text className="text-xs text-muted-foreground">{subtitle}</Text>
+            <Text className="mt-0.5 text-xs text-muted-foreground">{subtitle}</Text>
           ) : null}
         </View>
-
-        {activePoint ? (
+        {stats ? (
           <View className="items-end">
-            <Text className="text-base font-bold text-card-foreground">
-              {activePoint.value} {unit}
+            <Text className="text-lg font-bold text-foreground tabular-nums">
+              {stats.latest}
+              <Text className="text-xs font-normal text-muted-foreground"> {unit}</Text>
             </Text>
-            <View className="flex-row items-center gap-1.5">
-              <Text className="text-[11px] text-muted-foreground">
-                {activePoint.secondaryLabel ?? activePoint.label}
+            <Badge
+              variant={stats.delta > 0 ? 'success' : stats.delta < 0 ? 'destructive' : 'secondary'}
+              className="mt-0.5"
+            >
+              <Text>
+                {stats.delta > 0 ? `+${stats.delta}` : stats.delta} {unit}
               </Text>
-              {data.length >= 2 ? (
-                <Text
-                  className={cn(
-                    'text-[11px] font-semibold',
-                    delta > 0
-                      ? 'text-emerald-500'
-                      : delta < 0
-                        ? 'text-amber-500'
-                        : 'text-muted-foreground'
-                  )}
-                >
-                  {delta > 0 ? `+${delta}` : delta} {unit}
-                </Text>
-              ) : null}
-            </View>
+            </Badge>
           </View>
         ) : null}
       </View>
 
-      {data.length === 0 ? (
-        <View className="h-36 items-center justify-center rounded-lg border border-dashed border-border">
+      {data.length === 0 || !stats || !linePath || !areaPath ? (
+        <View className="mt-4 items-center justify-center rounded-lg border border-dashed border-border py-10">
           <Text className="px-4 text-center text-xs text-muted-foreground">{emptyMessage}</Text>
         </View>
       ) : (
-        <View onLayout={onLayout} className="w-full">
-          <Svg width={width} height={height}>
-            <Defs>
-              <LinearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={accentColor} stopOpacity={0.28} />
-                <Stop offset="1" stopColor={accentColor} stopOpacity={0.01} />
-              </LinearGradient>
-            </Defs>
+        <View className="mt-3" onLayout={onLayout}>
+          {activePoint ? (
+            <View className="mb-1.5 flex-row items-center justify-between rounded-md bg-secondary/70 px-2.5 py-1">
+              <Text className="text-[11px] font-medium text-muted-foreground">
+                {activePoint.secondaryLabel ?? activePoint.label}
+              </Text>
+              <Text className="text-xs font-bold text-foreground tabular-nums">
+                {activePoint.value} {unit}
+              </Text>
+            </View>
+          ) : null}
 
-            {yTicks.map((t, i) => (
-              <React.Fragment key={i}>
-                <Line
-                  x1={padLeft}
-                  y1={t.y}
-                  x2={padLeft + chartW}
-                  y2={t.y}
-                  stroke={gridStroke}
-                  strokeDasharray="3,3"
-                  strokeWidth={1}
+          <View style={{ width, height, position: 'relative' }}>
+            <GestureDetector gesture={scrubGesture}>
+              <Canvas style={{ width, height }}>
+                <StaticLineGroup
+                  width={width}
+                  padLeft={padLeft}
+                  padRight={padRight}
+                  padTop={padTop}
+                  plotH={plotH}
+                  gridStroke={gridStroke}
+                  dotBg={dotBg}
+                  accentColor={accentColor}
+                  yTicks={yTicks}
+                  areaPath={areaPath}
+                  linePath={linePath}
+                  pts={pts}
                 />
-                <SvgText
-                  x={padLeft - 6}
-                  y={t.y + 4}
-                  fontSize={10}
-                  fill={labelFill}
-                  textAnchor="end"
-                >
-                  {t.val}
-                </SvgText>
-              </React.Fragment>
+
+                <Line
+                  p1={cursorP1}
+                  p2={cursorP2}
+                  color={accentColor}
+                  strokeWidth={1.2}
+                  opacity={0.65}
+                />
+
+                <Circle cx={cursorX} cy={cursorY} r={8.5} color={accentColor} opacity={0.22} />
+                <Circle cx={cursorX} cy={cursorY} r={5} color={accentColor} />
+                <Circle cx={cursorX} cy={cursorY} r={2.2} color={dotBg} />
+              </Canvas>
+            </GestureDetector>
+
+            {/* Y-axis labels */}
+            {yTicks.map((t, idx) => (
+              <Text
+                key={idx}
+                className="pointer-events-none absolute left-0 w-9 text-right text-[10px] text-muted-foreground tabular-nums"
+                style={{ top: t.y - 7 }}
+                numberOfLines={1}
+              >
+                {t.val}
+              </Text>
             ))}
 
-            {areaPath ? <Path d={areaPath} fill={`url(#${gradientId})`} /> : null}
-            {linePath ? (
-              <Path
-                d={linePath}
-                stroke={accentColor}
-                strokeWidth={2.5}
-                fill="none"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ) : null}
-
-            {coords.map((pt, idx) => {
-              const isActive = idx === activeIndex;
-              const isLast = idx === data.length - 1;
-              const prevLabelIdx =
-                Math.floor((data.length - 2) / labelStep) * labelStep;
-              const lastTooClose =
-                isLast && data.length > 2 && data.length - 1 - prevLabelIdx < Math.max(2, Math.ceil(labelStep * 0.65));
-              const showXLabel =
-                idx === 0 ||
-                (isLast && !lastTooClose) ||
-                (idx % labelStep === 0 && idx < data.length - 1);
+            {/* X-axis labels */}
+            {pts.map((p, idx) => {
+              const show = idx === 0 || idx === pts.length - 1 || idx % labelStep === 0;
+              if (!show) return null;
               return (
-                <React.Fragment key={idx}>
-                  {isActive ? (
-                    <Line
-                      x1={pt.x}
-                      y1={padTop}
-                      x2={pt.x}
-                      y2={padTop + chartH}
-                      stroke={accentColor}
-                      strokeOpacity={0.35}
-                      strokeDasharray="2,2"
-                      strokeWidth={1}
-                    />
-                  ) : null}
-                  <Circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={isActive ? 5 : 3.2}
-                    fill={isActive ? accentColor : isDark ? '#18181b' : '#ffffff'}
-                    stroke={accentColor}
-                    strokeWidth={2}
-                  />
-                  {showXLabel ? (
-                    <SvgText
-                      x={pt.x}
-                      y={height - 6}
-                      fontSize={10}
-                      fill={isActive ? (isDark ? '#fafafa' : '#18181b') : labelFill}
-                      fontWeight={isActive ? '700' : '400'}
-                      textAnchor="middle"
-                    >
-                      {data[idx].label}
-                    </SvgText>
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-          </Svg>
-
-          {/* Touch targets over points for easy mobile/web inspection */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="mt-1"
-            contentContainerStyle={{ gap: 6, paddingRight: 4 }}
-          >
-            {data.slice(-6).map((item, sliceIdx) => {
-              const realIdx = Math.max(0, data.length - 6) + sliceIdx;
-              const isSelected = realIdx === activeIndex;
-              return (
-                <Pressable
-                  key={`${item.label}-${realIdx}`}
-                  onPress={() => setSelectedIndex(realIdx)}
-                  className={cn(
-                    'rounded-md border px-2 py-1',
-                    isSelected
-                      ? 'border-primary bg-secondary'
-                      : 'border-border bg-transparent'
-                  )}
+                <Text
+                  key={idx}
+                  className="pointer-events-none absolute w-11 text-center text-[10px] text-muted-foreground"
+                  style={{ left: Math.max(padLeft - 14, Math.min(width - 46, p.x - 22)), top: height - 18 }}
+                  numberOfLines={1}
                 >
-                  <Text numberOfLines={1} className="text-[10px] text-muted-foreground">
-                    {item.label}:{' '}
-                    <Text className="text-[10px] font-semibold text-foreground">{item.value}</Text>
-                  </Text>
-                </Pressable>
+                  {p.label}
+                </Text>
               );
             })}
-          </ScrollView>
+          </View>
+
+          <View className="mt-1.5 flex-row justify-between px-1">
+            <Text className="text-[11px] text-muted-foreground">
+              Mín: {stats.min} {unit}
+            </Text>
+            <Text className="text-[11px] text-muted-foreground">
+              {data.length} registros • Máx: {stats.max} {unit}
+            </Text>
+          </View>
         </View>
       )}
-    </View>
+    </Card>
   );
-}
+});
 
 export interface ConsistencyBarItem {
   label: string;
@@ -304,133 +413,158 @@ export interface ConsistencyBarItem {
   skipped: number;
 }
 
-export function ConsistencyBarChart({
-  title,
-  subtitle,
-  data,
-}: {
+interface ConsistencyBarChartProps {
   title: string;
   subtitle?: string;
   data: ConsistencyBarItem[];
-}) {
-  const { state } = useAppStore();
-  const isDark = state.themePreference === 'dark';
+}
+
+export const ConsistencyBarChart = React.memo(function ConsistencyBarChart({
+  title,
+  subtitle,
+  data,
+}: ConsistencyBarChartProps) {
+  const themePreference = useThemePreference();
+  const isDark = themePreference === 'dark';
   const [width, setWidth] = useState(320);
+
+  const onLayout = useCallback((e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    if (w > 0) setWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+  }, []);
 
   const height = 165;
   const padLeft = 28;
   const padRight = 12;
   const padTop = 14;
   const padBottom = 26;
-  const chartW = Math.max(120, width - padLeft - padRight);
-  const chartH = Math.max(70, height - padTop - padBottom);
+  const plotW = Math.max(40, width - padLeft - padRight);
+  const plotH = height - padTop - padBottom;
 
-  const maxTotal = Math.max(
-    1,
-    ...data.map((d) => d.completed + d.skipped)
+  const maxTotal = useMemo(
+    () => Math.max(4, ...data.map((d) => d.completed + d.skipped)),
+    [data]
   );
+
+  const barStep = data.length > 0 ? plotW / data.length : plotW;
+  const barWidth = Math.min(26, Math.max(10, barStep * 0.56));
   const gridStroke = isDark ? '#27272a' : '#e4e4e7';
-  const labelFill = isDark ? '#a1a1aa' : '#71717a';
+  const totalCompleted = useMemo(() => data.reduce((s, d) => s + d.completed, 0), [data]);
+  const totalSkipped = useMemo(() => data.reduce((s, d) => s + d.skipped, 0), [data]);
+
+  const bars = useMemo(() => {
+    return data.map((d, i) => {
+      const centerX = padLeft + i * barStep + barStep / 2;
+      const x = centerX - barWidth / 2;
+      const compH = (d.completed / maxTotal) * plotH;
+      const skipH = (d.skipped / maxTotal) * plotH;
+      const compY = padTop + plotH - compH;
+      const skipY = compY - skipH;
+      return { d, i, centerX, x, compH, skipH, compY, skipY };
+    });
+  }, [data, padLeft, barStep, barWidth, maxTotal, plotH, padTop]);
 
   return (
-    <View className="rounded-xl border border-border bg-card p-4">
-      <View className="mb-3 flex-row items-center justify-between">
-        <View>
-          <Text className="text-sm font-semibold text-card-foreground">{title}</Text>
-          {subtitle ? <Text className="text-xs text-muted-foreground">{subtitle}</Text> : null}
+    <Card className="p-4">
+      <View className="flex-row items-start justify-between">
+        <View className="flex-1">
+          <Text className="text-base font-semibold text-foreground">{title}</Text>
+          {subtitle ? (
+            <Text className="mt-0.5 text-xs text-muted-foreground">{subtitle}</Text>
+          ) : null}
         </View>
         <View className="flex-row items-center gap-3">
           <View className="flex-row items-center gap-1">
             <View className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
-            <Text className="text-[11px] text-muted-foreground">Feito</Text>
+            <Text className="text-xs text-muted-foreground">{totalCompleted} feitos</Text>
           </View>
           <View className="flex-row items-center gap-1">
             <View className="h-2.5 w-2.5 rounded-sm bg-amber-500" />
-            <Text className="text-[11px] text-muted-foreground">Skip</Text>
+            <Text className="text-xs text-muted-foreground">{totalSkipped} pulados</Text>
           </View>
         </View>
       </View>
 
-      {data.length === 0 ? (
-        <View className="h-32 items-center justify-center rounded-lg border border-dashed border-border">
-          <Text className="text-xs text-muted-foreground">Sem treinos registrados ainda.</Text>
-        </View>
-      ) : (
-        <View
-          onLayout={(e) => {
-            const w = e.nativeEvent.layout.width;
-            if (w > 0) setWidth(w);
-          }}
-        >
-          <Svg width={width} height={height}>
-            {[0, 0.5, 1].map((r, i) => {
-              const y = padTop + chartH - r * chartH;
-              const val = Math.round(r * maxTotal);
+      <View className="mt-3" onLayout={onLayout}>
+        <View style={{ width, height, position: 'relative' }}>
+          <Canvas style={{ width, height }}>
+            {[0, 0.5, 1].map((t, idx) => {
+              const y = padTop + plotH - t * plotH;
               return (
-                <React.Fragment key={i}>
-                  <Line
-                    x1={padLeft}
-                    y1={y}
-                    x2={padLeft + chartW}
-                    y2={y}
-                    stroke={gridStroke}
-                    strokeDasharray="3,3"
-                    strokeWidth={1}
+                <Line
+                  key={idx}
+                  p1={vec(padLeft, y)}
+                  p2={vec(width - padRight, y)}
+                  color={gridStroke}
+                  strokeWidth={1}
+                />
+              );
+            })}
+
+            {bars.map((b) => (
+              <React.Fragment key={b.i}>
+                {b.compH > 0 ? (
+                  <RoundedRect
+                    x={b.x}
+                    y={b.compY}
+                    width={barWidth}
+                    height={b.compH}
+                    r={4}
+                    color="#10b981"
                   />
-                  <SvgText x={padLeft - 6} y={y + 4} fontSize={10} fill={labelFill} textAnchor="end">
-                    {val}
-                  </SvgText>
-                </React.Fragment>
-              );
-            })}
+                ) : null}
+                {b.skipH > 0 ? (
+                  <RoundedRect
+                    x={b.x}
+                    y={b.skipY}
+                    width={barWidth}
+                    height={b.skipH}
+                    r={4}
+                    color="#f59e0b"
+                    opacity={0.9}
+                  />
+                ) : null}
+              </React.Fragment>
+            ))}
+          </Canvas>
 
-            {data.map((item, idx) => {
-              const slotW = chartW / data.length;
-              const barW = Math.min(28, Math.max(10, slotW * 0.55));
-              const x = padLeft + idx * slotW + (slotW - barW) / 2;
-              const compH = (item.completed / maxTotal) * chartH;
-              const skipH = (item.skipped / maxTotal) * chartH;
-              const baseY = padTop + chartH;
+          {[0, 0.5, 1].map((t, idx) => {
+            const y = padTop + plotH - t * plotH;
+            return (
+              <Text
+                key={idx}
+                className="pointer-events-none absolute left-0 w-6 text-right text-[10px] text-muted-foreground tabular-nums"
+                style={{ top: y - 7 }}
+              >
+                {Math.round(t * maxTotal)}
+              </Text>
+            );
+          })}
 
-              return (
-                <React.Fragment key={idx}>
-                  {item.completed > 0 ? (
-                    <Rect
-                      x={x}
-                      y={baseY - compH}
-                      width={barW}
-                      height={compH}
-                      rx={4}
-                      fill="#10b981"
-                    />
-                  ) : null}
-                  {item.skipped > 0 ? (
-                    <Rect
-                      x={x}
-                      y={baseY - compH - skipH - (item.completed > 0 ? 2 : 0)}
-                      width={barW}
-                      height={skipH}
-                      rx={4}
-                      fill="#f59e0b"
-                    />
-                  ) : null}
-                  {slotW >= 42 || idx % 2 === 0 || idx === data.length - 1 ? (
-                    <SvgText
-                      x={x + barW / 2}
-                      y={height - 6}
-                      fontSize={10}
-                      fill={labelFill}
-                      textAnchor="middle"
-                    >
-                      {item.label}
-                    </SvgText>
-                  ) : null}
-                </React.Fragment>
-              );
-            })}
-          </Svg>
+          {bars.map((b) => (
+            <React.Fragment key={b.i}>
+              {b.d.completed > 0 ? (
+                <Text
+                  className="pointer-events-none absolute w-7 text-center text-[10px] font-bold text-foreground tabular-nums"
+                  style={{
+                    left: b.centerX - 14,
+                    top: Math.max(2, (b.skipH > 0 ? b.skipY : b.compY) - 14),
+                  }}
+                >
+                  {b.d.completed}
+                </Text>
+              ) : null}
+              <Text
+                className="pointer-events-none absolute w-10 text-center text-[10px] text-muted-foreground"
+                style={{ left: b.centerX - 20, top: height - 18 }}
+                numberOfLines={1}
+              >
+                {b.d.label}
+              </Text>
+            </React.Fragment>
+          ))}
         </View>
-      )}
-    </View>
+      </View>
+    </Card>
   );
-}
+});

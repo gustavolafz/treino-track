@@ -1,5 +1,6 @@
 import { FlashList } from '@shopify/flash-list';
 import {
+  BookOpen,
   Check,
   ChevronDown,
   ChevronUp,
@@ -23,6 +24,7 @@ import {
   ExerciseTemplateDialog,
   WorkoutTemplateDialog,
 } from '@/components/routine/RotinaDialogs';
+import { ExerciseCatalogDialog } from '@/components/workout/ExerciseCatalogDialog';
 import {
   Badge,
   Button,
@@ -328,6 +330,7 @@ export default function RotinaScreen() {
     exercise: ExerciseTemplate | null;
   } | null>(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
+  const [catalogDialogOpen, setCatalogDialogOpen] = useState(false);
 
   const isCycleSplit =
     activeSplit.scheduleMode === 'cycle' &&
@@ -700,12 +703,18 @@ export default function RotinaScreen() {
         <TabsContent value="treinos" keepMounted className="flex-1">
           <View className="mb-3 flex-row items-center justify-between gap-2">
             <Text className="flex-1 text-xs text-muted-foreground">
-              Configure exercícios, metas e descanso em {activeSplit.name}
+              Exercícios de {activeSplit.name}
             </Text>
-            <Button size="sm" onPress={openNewWorkout}>
-              <Plus size={14} color={isDark ? '#18181b' : '#fafafa'} />
-              <Text>Novo Treino</Text>
-            </Button>
+            <View className="flex-row items-center gap-2">
+              <Button variant="outline" size="sm" onPress={() => setCatalogDialogOpen(true)}>
+                <BookOpen size={14} color={iconPrimary} />
+                <Text>Catálogo</Text>
+              </Button>
+              <Button size="sm" onPress={openNewWorkout}>
+                <Plus size={14} color={isDark ? '#18181b' : '#fafafa'} />
+                <Text>Novo Treino</Text>
+              </Button>
+            </View>
           </View>
 
           <FlashList
@@ -765,6 +774,11 @@ export default function RotinaScreen() {
         open={splitDialogOpen}
         onOpenChange={setSplitDialogOpen}
         onCreate={createSplit}
+      />
+
+      <ExerciseCatalogDialog
+        open={catalogDialogOpen}
+        onOpenChange={setCatalogDialogOpen}
       />
 
       <ExerciseActionDialog

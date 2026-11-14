@@ -1,9 +1,11 @@
 import { create } from 'zustand';
 import {
   deleteBodyMetricInDbSync,
+  deleteCustomExerciseInDbSync,
   deleteSplitInDbSync,
   deleteWorkoutLogInDbSync,
   loadBootEntitiesFromSqliteSync,
+  loadCustomExercisesSync,
   loadEntitiesFromSqliteSync,
   loadLogsInRangeSync,
   loadOlderCompletedExerciseSeedsSync,
@@ -16,6 +18,7 @@ import {
   updateWeeklyScheduleInDbSync,
   updateWorkoutStatusInDbSync,
   upsertBodyMetricInDbSync,
+  upsertCustomExerciseInDbSync,
   upsertSplitInDbSync,
   upsertWorkoutLogInDbSync,
 } from '@/lib/database';
@@ -46,6 +49,7 @@ import type {
   AppDataState,
   BackupConfig,
   BodyMetricEntry,
+  CatalogExercise,
   ExerciseLog,
   ExerciseTemplate,
   SetLog,
@@ -102,6 +106,7 @@ function computeSplitCountsFromLogs(logs: WorkoutLog[]): Record<string, number> 
 
 interface HydratedBootState {
   data: AppDataState;
+  customExercises: CatalogExercise[];
   lastExerciseHistory: Record<string, ExerciseHistoryEntry[]>;
   completedCountBySplit: Record<string, number>;
   loadedCutoffDate: string;
@@ -111,6 +116,12 @@ function hydrateInitialState(): HydratedBootState {
   const todayISO = toISODate(new Date());
   const recentCutoff = computeCutoffISO(todayISO, BOOT_WINDOW_DAYS);
   const meta = readMetaFromMmkv();
+  let customExercises: CatalogExercise[] = [];
+  try {
+    customExercises = loadCustomExercisesSync();
+  } catch {
+    customExercises = [];
+  }
   if (meta.sqliteInitialized) {
     try {
       const entities = loadBootEntitiesFromSqliteSync(recentCutoff);
@@ -133,6 +144,7 @@ function hydrateInitialState(): HydratedBootState {
           });
           return {
             data: upgraded,
+            customExercises,
             lastExerciseHistory: buildLastExerciseHistory(upgraded.logs),
             completedCountBySplit: computeSplitCountsFromLogs(upgraded.logs),
             loadedCutoffDate: '1970-01-01',
@@ -150,6 +162,7 @@ function hydrateInitialState(): HydratedBootState {
             bodyMetrics: entities.bodyMetrics,
             backupConfig: meta.backupConfig,
           },
+          customExercises,
           lastExerciseHistory: buildLastExerciseHistory(entities.logs, olderSeeds),
           completedCountBySplit,
           loadedCutoffDate: recentCutoff,
@@ -181,6 +194,7 @@ function hydrateInitialState(): HydratedBootState {
   }
   return {
     data: initial,
+    customExercises,
     lastExerciseHistory: buildLastExerciseHistory(initial.logs),
     completedCountBySplit: computeSplitCountsFromLogs(initial.logs),
     loadedCutoffDate: '1970-01-01',
@@ -240,9 +254,13 @@ export interface WorkoutStoreActions {
   setWorkoutStatus: (dateISO: string, status: WorkoutLog['status'], notes?: string) => void;
   deleteWorkoutLog: (dateISO: string) => void;
 
-  // Body Metrics
+  // Body Metrics & Custom Exercise Catalog
   upsertBodyMetric: (entry: Omit<BodyMetricEntry, 'id'> & { id?: string }) => void;
   deleteBodyMetric: (id: string) => void;
+  registerCustomExercise: (
+    payload: Omit<CatalogExercise, 'id' | 'isCustom'>
+  ) => CatalogExercise;
+  deleteCustomExercise: (id: string) => void;
 
   // Backup & Reset & Windowed Loading
   ensureDateRangeLoaded: (startIso: string, endIso: string) => void;
@@ -255,6 +273,7 @@ export interface WorkoutStoreActions {
 
 export interface WorkoutStoreState {
   data: AppDataState;
+  customExercises: CatalogExercise[];
   isLoading: boolean;
   activeSplit: TrainingSplit;
   logsByDate: Record<string, WorkoutLog>;
@@ -1178,6 +1197,47 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
       });
     },
 
+    registerCustomExercise: (payload) => {
+      const trimmedName = payload.name.trim();
+      const key = trimmedName.toLowerCase();
+      const existing = get().customExercises.find(
+        (ex) => ex.name.trim().toLowerCase() === key
+      );
+      const entry: CatalogExercise = {
+        id: existing?.id ?? createId('cex'),
+        name: trimmedName,
+        muscleGroup: payload.muscleGroup.trim() || 'Geral',
+        defaultSets: Math.max(1, payload.defaultSets || 3),
+        defaultReps: payload.defaultReps.trim() || '5-9',
+        defaultRestSeconds: Math.max(15, payload.defaultRestSeconds || 120),
+        isCustom: true,
+      };
+      try {
+        upsertCustomExerciseInDbSync(entry);
+      } catch (err) {
+        console.warn('Erro ao cadastrar exercício personalizado:', err);
+      }
+      set((store) => {
+        const nextList = [
+          entry,
+          ...store.customExercises.filter((ex) => ex.id !== entry.id),
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        return { customExercises: nextList };
+      });
+      return entry;
+    },
+
+    deleteCustomExercise: (id) => {
+      try {
+        deleteCustomExerciseInDbSync(id);
+      } catch (err) {
+        console.warn('Erro ao excluir exercício personalizado:', err);
+      }
+      set((store) => ({
+        customExercises: store.customExercises.filter((ex) => ex.id !== id),
+      }));
+    },
+
     ensureDateRangeLoaded: (startIso, endIso) => {
       const store = get();
       if (startIso >= store.loadedCutoffDate) return;
@@ -1302,6 +1362,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
 
   return {
     data: initialData,
+    customExercises: initialBoot.customExercises,
     isLoading: false,
     activeSplit: getActiveSplitFrom(initialData.splits),
     logsByDate: buildLogsByDate(initialData.logs),

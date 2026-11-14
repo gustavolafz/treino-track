@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, Check, Edit3, Trash2 } from 'lucide-react-native';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
 import {
   Button,
@@ -12,9 +12,15 @@ import {
   Label,
   Text,
 } from '@/components/ui';
+import {
+  ExerciseCatalogDialog,
+  ExerciseNameField,
+} from '@/components/workout/ExerciseCatalogDialog';
+import { buildMergedExerciseCatalog } from '@/lib/exerciseCatalog';
 import type { PresetSplitKey } from '@/lib/seedData';
 import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
-import type { AccentTag, ExerciseTemplate, TrainingSplit } from '@/types/workout';
+import { useStoreActions, useWorkoutStore } from '@/store/useWorkoutStore';
+import type { AccentTag, CatalogExercise, ExerciseTemplate, TrainingSplit } from '@/types/workout';
 
 const PRESET_OPTIONS: { key: PresetSplitKey; label: string; desc: string }[] = [
   { key: 'pplul', label: 'PPLUL', desc: 'Pull • Push • Legs • Upper • Lower (51 séries)' },
@@ -214,12 +220,18 @@ export const ExerciseTemplateDialog = React.memo(function ExerciseTemplateDialog
   onClose,
   onSave,
 }: ExerciseTemplateDialogProps) {
+  const customExercises = useWorkoutStore((s) => s.customExercises);
+  const splits = useWorkoutStore((s) => s.data.splits);
+  const { registerCustomExercise } = useStoreActions();
+
   const [exName, setExName] = useState('');
   const [exMuscle, setExMuscle] = useState('');
   const [exSets, setExSets] = useState('2');
   const [exReps, setExReps] = useState('5-9');
   const [exRest, setExRest] = useState('120');
   const [exWeight, setExWeight] = useState('');
+  const [saveToCatalog, setSaveToCatalog] = useState(true);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
   useEffect(() => {
     if (workoutId) {
@@ -229,115 +241,161 @@ export const ExerciseTemplateDialog = React.memo(function ExerciseTemplateDialog
       setExReps(editingExercise?.targetReps ?? '5-9');
       setExRest(editingExercise ? String(editingExercise.restSeconds ?? 120) : '120');
       setExWeight(editingExercise?.targetWeightKg ? String(editingExercise.targetWeightKg) : '');
+      setSaveToCatalog(!editingExercise);
+      setCatalogOpen(false);
     }
   }, [editingExercise, workoutId]);
 
+  const mergedCatalog = useMemo(
+    () => (workoutId ? buildMergedExerciseCatalog(customExercises, splits) : []),
+    [customExercises, splits, workoutId]
+  );
+
+  const applyCatalogSelection = (ex: CatalogExercise) => {
+    setExName(ex.name);
+    setExMuscle(ex.muscleGroup);
+    setExSets(String(ex.defaultSets));
+    setExReps(ex.defaultReps);
+    setExRest(String(ex.defaultRestSeconds));
+    setSaveToCatalog(false);
+  };
+
   const handleSave = () => {
-    if (!workoutId || !exName.trim()) return;
+    const trimmed = exName.trim();
+    if (!workoutId || !trimmed) return;
+    const parsedSets = Math.max(1, parseInt(exSets, 10) || 2);
+    const parsedReps = exReps.trim() || '5-9';
+    const parsedRest = Math.max(15, parseInt(exRest, 10) || 120);
+
+    const alreadyExists = mergedCatalog.some(
+      (ex) => ex.name.trim().toLowerCase() === trimmed.toLowerCase()
+    );
+    if (!editingExercise && saveToCatalog && !alreadyExists) {
+      registerCustomExercise({
+        name: trimmed,
+        muscleGroup: exMuscle.trim() || 'Geral',
+        defaultSets: parsedSets,
+        defaultReps: parsedReps,
+        defaultRestSeconds: parsedRest,
+      });
+    }
+
     onSave(workoutId, editingExercise?.id ?? null, {
-      name: exName.trim(),
+      name: trimmed,
       muscleGroup: exMuscle.trim() || undefined,
-      targetSets: Math.max(1, parseInt(exSets, 10) || 2),
-      targetReps: exReps.trim() || '5-9',
-      restSeconds: Math.max(15, parseInt(exRest, 10) || 120),
+      targetSets: parsedSets,
+      targetReps: parsedReps,
+      restSeconds: parsedRest,
       targetWeightKg: exWeight ? parseFloat(exWeight.replace(',', '.')) || undefined : undefined,
     });
     onClose();
   };
 
   return (
-    <Dialog open={workoutId !== null} onOpenChange={(open) => !open && onClose()}>
-      <DialogHeader>
-        <DialogTitle>
-          {editingExercise ? 'Editar Exercício' : 'Adicionar Exercício'}
-        </DialogTitle>
-        <DialogDescription>
-          Defina o nome do exercício, meta de séries/reps e tempo de descanso.
-        </DialogDescription>
-      </DialogHeader>
-      <View className="gap-3">
-        <View>
-          <Label>Nome do Exercício</Label>
-          <Input
-            value={exName}
-            onChangeText={setExName}
-            placeholder="Ex: Agachamento Pêndulo"
+    <>
+      <Dialog open={workoutId !== null && !catalogOpen} onOpenChange={(open) => !open && onClose()}>
+        <DialogHeader>
+          <DialogTitle>
+            {editingExercise ? 'Editar Exercício' : 'Adicionar Exercício'}
+          </DialogTitle>
+          <DialogDescription>
+            Escolha do catálogo de clássicos ou cadastre um novo exercício com suas metas.
+          </DialogDescription>
+        </DialogHeader>
+        <View className="gap-3">
+          <ExerciseNameField
+            name={exName}
+            onChangeName={setExName}
+            placeholder="Ex: Supino Reto Halteres"
+            catalog={mergedCatalog}
+            onOpenCatalog={() => setCatalogOpen(true)}
+            onPickCatalogExercise={applyCatalogSelection}
+            saveToCatalog={saveToCatalog}
+            onToggleSaveToCatalog={() => setSaveToCatalog((v) => !v)}
+            showSaveToCatalogToggle={!editingExercise}
           />
-        </View>
-        <View>
-          <Label>Grupo Muscular (opcional)</Label>
-          <Input
-            value={exMuscle}
-            onChangeText={setExMuscle}
-            placeholder="Ex: Costas, Peito, Quadríceps"
-          />
-        </View>
-        <View className="flex-row gap-3">
-          <View className="flex-1">
-            <Label>Meta Séries</Label>
+          <View>
+            <Label>Grupo Muscular (opcional)</Label>
             <Input
-              value={exSets}
-              onChangeText={setExSets}
-              keyboardType="number-pad"
-              placeholder="2"
+              value={exMuscle}
+              onChangeText={setExMuscle}
+              placeholder="Ex: Costas, Peito, Quadríceps"
             />
           </View>
-          <View className="flex-1">
-            <Label>Meta Reps</Label>
-            <Input value={exReps} onChangeText={setExReps} placeholder="5-9" />
+          <View className="flex-row gap-3">
+            <View className="flex-1">
+              <Label>Meta Séries</Label>
+              <Input
+                value={exSets}
+                onChangeText={setExSets}
+                keyboardType="number-pad"
+                placeholder="2"
+              />
+            </View>
+            <View className="flex-1">
+              <Label>Meta Reps</Label>
+              <Input value={exReps} onChangeText={setExReps} placeholder="5-9" />
+            </View>
           </View>
-        </View>
-        <View>
-          <Label>Descanso (segundos)</Label>
-          <View className="mb-2 flex-row flex-wrap gap-1.5">
-            {REST_PRESETS.map((sec) => (
-              <Pressable
-                key={sec}
-                onPress={() => setExRest(String(sec))}
-                className={cn(
-                  'rounded-full border px-3 py-1',
-                  exRest === String(sec)
-                    ? 'border-primary bg-primary'
-                    : 'border-border bg-secondary'
-                )}
-              >
-                <Text
+          <View>
+            <Label>Descanso (segundos)</Label>
+            <View className="mb-2 flex-row flex-wrap gap-1.5">
+              {REST_PRESETS.map((sec) => (
+                <Pressable
+                  key={sec}
+                  onPress={() => setExRest(String(sec))}
                   className={cn(
-                    'text-xs font-semibold',
-                    exRest === String(sec) ? 'text-primary-foreground' : 'text-foreground'
+                    'rounded-full border px-3 py-1',
+                    exRest === String(sec)
+                      ? 'border-primary bg-primary'
+                      : 'border-border bg-secondary'
                   )}
                 >
-                  {sec}s
-                </Text>
-              </Pressable>
-            ))}
+                  <Text
+                    className={cn(
+                      'text-xs font-semibold',
+                      exRest === String(sec) ? 'text-primary-foreground' : 'text-foreground'
+                    )}
+                  >
+                    {sec}s
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <Input
+              value={exRest}
+              onChangeText={setExRest}
+              keyboardType="number-pad"
+              placeholder="120"
+            />
           </View>
-          <Input
-            value={exRest}
-            onChangeText={setExRest}
-            keyboardType="number-pad"
-            placeholder="120"
-          />
+          <View>
+            <Label>Carga Alvo em kg (opcional)</Label>
+            <Input
+              value={exWeight}
+              onChangeText={setExWeight}
+              keyboardType="decimal-pad"
+              placeholder="Ex: 60"
+            />
+          </View>
         </View>
-        <View>
-          <Label>Carga Alvo em kg (opcional)</Label>
-          <Input
-            value={exWeight}
-            onChangeText={setExWeight}
-            keyboardType="decimal-pad"
-            placeholder="Ex: 60"
-          />
-        </View>
-      </View>
-      <DialogFooter>
-        <Button variant="outline" onPress={onClose}>
-          <Text>Cancelar</Text>
-        </Button>
-        <Button onPress={handleSave}>
-          <Text>Salvar</Text>
-        </Button>
-      </DialogFooter>
-    </Dialog>
+        <DialogFooter>
+          <Button variant="outline" onPress={onClose}>
+            <Text>Cancelar</Text>
+          </Button>
+          <Button onPress={handleSave}>
+            <Text>Salvar</Text>
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <ExerciseCatalogDialog
+        open={workoutId !== null && catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onSelectExercise={applyCatalogSelection}
+        initialSearch={exName.trim()}
+      />
+    </>
   );
 });
 

@@ -3,6 +3,7 @@ import { formatShortDateCached } from '@/lib/dateCache';
 import type { WeekdayIndex } from '@/lib/utils';
 import type {
   BodyMetricEntry,
+  CatalogExercise,
   ExerciseLog,
   SetLog,
   TrainingSplit,
@@ -11,6 +12,7 @@ import type {
 } from '@/types/workout';
 
 const WEB_DB_KEY = 'treino_track_sqlite_web_fallback_v1';
+const WEB_CUSTOM_EX_KEY = 'treino_track_custom_exercises_v1';
 
 export interface HydratedSqliteEntities {
   splits: TrainingSplit[];
@@ -209,6 +211,30 @@ export function updateCycleScheduleInDbSync(
     target.startedAt = startedAt;
     writeWebStore(data);
   }
+}
+
+export function loadCustomExercisesSync(): CatalogExercise[] {
+  try {
+    if (typeof window === 'undefined') return [];
+    const raw = window.localStorage.getItem(WEB_CUSTOM_EX_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CatalogExercise[];
+  } catch {
+    return [];
+  }
+}
+
+export function upsertCustomExerciseInDbSync(ex: CatalogExercise): void {
+  if (typeof window === 'undefined') return;
+  const list = loadCustomExercisesSync().filter((item) => item.id !== ex.id);
+  list.push({ ...ex, isCustom: true });
+  window.localStorage.setItem(WEB_CUSTOM_EX_KEY, JSON.stringify(list));
+}
+
+export function deleteCustomExerciseInDbSync(id: string): void {
+  if (typeof window === 'undefined') return;
+  const list = loadCustomExercisesSync().filter((item) => item.id !== id);
+  window.localStorage.setItem(WEB_CUSTOM_EX_KEY, JSON.stringify(list));
 }
 
 export function upsertBodyMetricInDbSync(entry: BodyMetricEntry): void {

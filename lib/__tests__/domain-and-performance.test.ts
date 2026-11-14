@@ -8,6 +8,12 @@ import {
   getWeekdayCached,
 } from '@/lib/dateCache';
 import {
+  buildMergedExerciseCatalog,
+  CLASSIC_EXERCISES,
+  filterExerciseSuggestions,
+  matchesMuscleFilter,
+} from '@/lib/exerciseCatalog';
+import {
   buildLastExerciseHistory,
   patchLastExerciseHistory,
   patchSplitCompletedCounts,
@@ -276,4 +282,59 @@ test('createPresetSplit("ppl") and ("fullbody") enforce exact rolling cycles and
   ]) {
     assert.ok(!canonicalShared.includes(forbidden), `Unexpected duplicate variant: ${forbidden}`);
   }
+});
+
+test('exerciseCatalog includes classic exercises without duplicates and merges custom entries first', () => {
+  assert.ok(CLASSIC_EXERCISES.length >= 70);
+  const classicKeys = new Set(CLASSIC_EXERCISES.map((e) => e.name.trim().toLowerCase()));
+  assert.equal(classicKeys.size, CLASSIC_EXERCISES.length);
+
+  // Every exercise in PPLUL, PPL, and Full Body is covered cleanly in CLASSIC_EXERCISES
+  const pplul = createPresetSplit('pplul', '2026-10-17');
+  const ppl = createPresetSplit('ppl', '2026-11-16');
+  const fb = createPresetSplit('fullbody', '2026-11-16');
+  for (const ex of [...pplul.workouts, ...ppl.workouts, ...fb.workouts].flatMap(
+    (w) => w.exercises
+  )) {
+    assert.ok(
+      classicKeys.has(ex.name.trim().toLowerCase()),
+      `Missing canonical exercise from CLASSIC_EXERCISES: ${ex.name}`
+    );
+  }
+
+  // Custom exercise overrides/prioritizes cleanly without duplicating by name
+  const custom = [
+    {
+      id: 'cex_1',
+      name: 'Pullover na Polia Alta',
+      muscleGroup: 'Costas',
+      defaultSets: 3,
+      defaultReps: '8-12',
+      defaultRestSeconds: 90,
+      isCustom: true,
+    },
+    {
+      id: 'cex_2',
+      name: 'Supino Reto Barra',
+      muscleGroup: 'Peito',
+      defaultSets: 4,
+      defaultReps: '4-6',
+      defaultRestSeconds: 180,
+      isCustom: true,
+    },
+  ];
+  const merged = buildMergedExerciseCatalog(custom, [pplul, ppl, fb]);
+  assert.equal(
+    merged.filter((e) => e.name.toLowerCase() === 'supino reto barra').length,
+    1
+  );
+  assert.equal(merged[0].name, 'Pullover na Polia Alta');
+  assert.equal(merged[0].isCustom, true);
+
+  // Filter & autocomplete helpers
+  const supSuggestions = filterExerciseSuggestions('supi', merged, 5);
+  assert.ok(supSuggestions.length > 0);
+  assert.ok(supSuggestions.every((s) => s.name.toLowerCase().includes('supi')));
+  assert.ok(matchesMuscleFilter('Posterior Ombro', 'Ombros'));
+  assert.ok(matchesMuscleFilter('Antebraço/Bíceps', 'Bíceps'));
 });

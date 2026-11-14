@@ -6,6 +6,7 @@ import { WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import type {
   AccentTag,
   BodyMetricEntry,
+  CatalogExercise,
   ExerciseLog,
   ExerciseTemplate,
   SetLog,
@@ -139,6 +140,17 @@ export function initDatabaseSync(): void {
       notes TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_bm_date ON body_metrics(date DESC);
+
+    CREATE TABLE IF NOT EXISTS custom_exercises (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      muscle_group TEXT NOT NULL DEFAULT 'Geral',
+      default_sets INTEGER NOT NULL DEFAULT 3,
+      default_reps TEXT NOT NULL DEFAULT '5-9',
+      default_rest_seconds INTEGER NOT NULL DEFAULT 120,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_custom_ex_name ON custom_exercises(name);
   `);
 
   const splitCols = db.getAllSync<{ name: string }>('PRAGMA table_info(splits)');
@@ -862,6 +874,50 @@ export function updateCycleScheduleInDbSync(
     startedAt,
     splitId
   );
+}
+
+interface CustomExerciseRow {
+  id: string;
+  name: string;
+  muscle_group: string;
+  default_sets: number;
+  default_reps: string;
+  default_rest_seconds: number;
+}
+
+export function loadCustomExercisesSync(): CatalogExercise[] {
+  initDatabaseSync();
+  const rows = getDb().getAllSync<CustomExerciseRow>(
+    'SELECT id, name, muscle_group, default_sets, default_reps, default_rest_seconds FROM custom_exercises ORDER BY name COLLATE NOCASE ASC'
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    muscleGroup: r.muscle_group || 'Geral',
+    defaultSets: r.default_sets,
+    defaultReps: r.default_reps,
+    defaultRestSeconds: r.default_rest_seconds,
+    isCustom: true,
+  }));
+}
+
+export function upsertCustomExerciseInDbSync(ex: CatalogExercise): void {
+  initDatabaseSync();
+  getDb().runSync(
+    'INSERT OR REPLACE INTO custom_exercises (id, name, muscle_group, default_sets, default_reps, default_rest_seconds, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ex.id,
+    ex.name,
+    ex.muscleGroup || 'Geral',
+    ex.defaultSets,
+    ex.defaultReps,
+    ex.defaultRestSeconds,
+    new Date().toISOString()
+  );
+}
+
+export function deleteCustomExerciseInDbSync(id: string): void {
+  initDatabaseSync();
+  getDb().runSync('DELETE FROM custom_exercises WHERE id = ?', id);
 }
 
 export function upsertBodyMetricInDbSync(entry: BodyMetricEntry): void {

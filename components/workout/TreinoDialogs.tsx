@@ -14,18 +14,23 @@ import {
   Text,
 } from '@/components/ui';
 import {
+  ExerciseCatalogDialog,
+  ExerciseNameField,
+} from '@/components/workout/ExerciseCatalogDialog';
+import {
   addDaysCached,
   formatShortDateCached,
   getWeekdayCached,
 } from '@/lib/dateCache';
-import { queryCompletedExercisesWithCountSync } from '@/lib/database';
+import { buildMergedExerciseCatalog } from '@/lib/exerciseCatalog';
 import {
   getPlannedWorkoutIdForDate,
   rotateScheduleByDays,
   shiftCycleStartDate,
 } from '@/lib/schedule';
 import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
-import type { TrainingSplit } from '@/types/workout';
+import { useStoreActions, useWorkoutStore } from '@/store/useWorkoutStore';
+import type { CatalogExercise, TrainingSplit } from '@/types/workout';
 
 const SKIP_PRESETS = [
   'Sem tempo',
@@ -294,116 +299,141 @@ export const AddExerciseDialog = React.memo(function AddExerciseDialog({
   onOpenChange,
   onAddExercise,
 }: AddExerciseDialogProps) {
+  const customExercises = useWorkoutStore((s) => s.customExercises);
+  const splits = useWorkoutStore((s) => s.data.splits);
+  const { registerCustomExercise } = useStoreActions();
+
   const [name, setName] = useState('');
   const [muscle, setMuscle] = useState('Geral');
   const [sets, setSets] = useState('2');
   const [reps, setReps] = useState('5-9');
   const [rest, setRest] = useState('120');
+  const [saveToCatalog, setSaveToCatalog] = useState(true);
+  const [catalogOpen, setCatalogOpen] = useState(false);
 
-  const knownSuggestions = useMemo(() => {
-    if (!open) return [];
-    const q = name.trim().toLowerCase();
-    if (q.length < 2) return [];
-    return queryCompletedExercisesWithCountSync()
-      .filter((ex) => {
-        const lower = ex.name.toLowerCase();
-        return lower.includes(q) && lower !== q;
-      })
-      .slice(0, 4);
-  }, [name, open]);
+  useEffect(() => {
+    if (!open) setCatalogOpen(false);
+  }, [open]);
+
+  const mergedCatalog = useMemo(
+    () => (open ? buildMergedExerciseCatalog(customExercises, splits) : []),
+    [customExercises, open, splits]
+  );
+
+  const applyCatalogSelection = (ex: CatalogExercise) => {
+    setName(ex.name);
+    setMuscle(ex.muscleGroup);
+    setSets(String(ex.defaultSets));
+    setReps(ex.defaultReps);
+    setRest(String(ex.defaultRestSeconds));
+    setSaveToCatalog(false);
+  };
 
   const handleConfirm = () => {
-    if (!name.trim()) return;
-    onAddExercise(
-      name.trim(),
-      Math.max(1, parseInt(sets, 10) || 2),
-      reps.trim() || '5-9',
-      Math.max(30, parseInt(rest, 10) || 120),
-      muscle.trim() || undefined
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const parsedSets = Math.max(1, parseInt(sets, 10) || 2);
+    const parsedReps = reps.trim() || '5-9';
+    const parsedRest = Math.max(30, parseInt(rest, 10) || 120);
+    const parsedMuscle = muscle.trim() || 'Geral';
+
+    const alreadyExists = mergedCatalog.some(
+      (ex) => ex.name.trim().toLowerCase() === trimmed.toLowerCase()
     );
+    if (saveToCatalog && !alreadyExists) {
+      registerCustomExercise({
+        name: trimmed,
+        muscleGroup: parsedMuscle,
+        defaultSets: parsedSets,
+        defaultReps: parsedReps,
+        defaultRestSeconds: parsedRest,
+      });
+    }
+
+    onAddExercise(trimmed, parsedSets, parsedReps, parsedRest, muscle.trim() || undefined);
     setName('');
+    setMuscle('Geral');
     setSets('2');
     setReps('5-9');
     setRest('120');
+    setSaveToCatalog(true);
     onOpenChange(false);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <DialogTitle>Adicionar Exercício ao Treino</DialogTitle>
-        <DialogDescription>
-          Defina o nome do exercício, meta de séries/reps e descanso.
-        </DialogDescription>
-      </DialogHeader>
-      <View className="gap-3">
-        <View>
-          <Label>Nome do Exercício</Label>
-          <Input
-            value={name}
-            onChangeText={setName}
-            placeholder="Ex: Crucifixo Máquina"
+    <>
+      <Dialog open={open && !catalogOpen} onOpenChange={onOpenChange}>
+        <DialogHeader>
+          <DialogTitle>Adicionar Exercício ao Treino</DialogTitle>
+          <DialogDescription>
+            Escolha do catálogo ou digite um novo exercício para cadastrar e adicionar agora.
+          </DialogDescription>
+        </DialogHeader>
+        <View className="gap-3">
+          <ExerciseNameField
+            name={name}
+            onChangeName={setName}
+            placeholder="Ex: Supino Reto Halteres"
+            catalog={mergedCatalog}
+            onOpenCatalog={() => setCatalogOpen(true)}
+            onPickCatalogExercise={applyCatalogSelection}
+            saveToCatalog={saveToCatalog}
+            onToggleSaveToCatalog={() => setSaveToCatalog((v) => !v)}
           />
-          {knownSuggestions.length > 0 ? (
-            <View className="mt-2 flex-row flex-wrap gap-1.5">
-              {knownSuggestions.map((s) => (
-                <Pressable
-                  key={s.name}
-                  onPress={() => setName(s.name)}
-                  className="rounded-full border border-border bg-secondary px-2.5 py-1 active:opacity-80"
-                >
-                  <Text className="text-xs font-medium text-foreground">{s.name}</Text>
-                </Pressable>
-              ))}
+          <View>
+            <Label>Grupo Muscular (opcional)</Label>
+            <Input
+              value={muscle}
+              onChangeText={setMuscle}
+              placeholder="Ex: Peito, Costas, Pernas"
+            />
+          </View>
+          <View className="flex-row gap-2">
+            <View className="flex-1">
+              <Label>Meta Séries</Label>
+              <Input
+                value={sets}
+                onChangeText={setSets}
+                keyboardType="number-pad"
+                placeholder="2"
+              />
             </View>
-          ) : null}
-        </View>
-        <View>
-          <Label>Grupo Muscular (opcional)</Label>
-          <Input
-            value={muscle}
-            onChangeText={setMuscle}
-            placeholder="Ex: Peito, Costas, Pernas"
-          />
-        </View>
-        <View className="flex-row gap-2">
-          <View className="flex-1">
-            <Label>Meta Séries</Label>
-            <Input
-              value={sets}
-              onChangeText={setSets}
-              keyboardType="number-pad"
-              placeholder="2"
-            />
-          </View>
-          <View className="flex-1">
-            <Label>Meta Reps</Label>
-            <Input
-              value={reps}
-              onChangeText={setReps}
-              placeholder="5-9"
-            />
-          </View>
-          <View className="flex-1">
-            <Label>Descanso (s)</Label>
-            <Input
-              value={rest}
-              onChangeText={setRest}
-              keyboardType="number-pad"
-              placeholder="120"
-            />
+            <View className="flex-1">
+              <Label>Meta Reps</Label>
+              <Input
+                value={reps}
+                onChangeText={setReps}
+                placeholder="5-9"
+              />
+            </View>
+            <View className="flex-1">
+              <Label>Descanso (s)</Label>
+              <Input
+                value={rest}
+                onChangeText={setRest}
+                keyboardType="number-pad"
+                placeholder="120"
+              />
+            </View>
           </View>
         </View>
-      </View>
-      <DialogFooter>
-        <Button variant="outline" onPress={() => onOpenChange(false)}>
-          <Text>Cancelar</Text>
-        </Button>
-        <Button onPress={handleConfirm}>
-          <Text>Adicionar</Text>
-        </Button>
-      </DialogFooter>
-    </Dialog>
+        <DialogFooter>
+          <Button variant="outline" onPress={() => onOpenChange(false)}>
+            <Text>Cancelar</Text>
+          </Button>
+          <Button onPress={handleConfirm}>
+            <Text>Adicionar</Text>
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <ExerciseCatalogDialog
+        open={open && catalogOpen}
+        onOpenChange={setCatalogOpen}
+        onSelectExercise={applyCatalogSelection}
+        initialSearch={name.trim()}
+      />
+    </>
   );
 });
 

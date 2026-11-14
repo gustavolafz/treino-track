@@ -71,6 +71,16 @@ export interface WorkoutLog {
   updatedAt: string; // ISO datetime
 }
 
+export interface CatalogExercise {
+  id: string;
+  name: string;
+  muscleGroup: string;
+  defaultSets: number;
+  defaultReps: string;
+  defaultRestSeconds: number;
+  isCustom: boolean;
+}
+
 export interface BodyMetricEntry {
   id: string;
   date: string; // YYYY-MM-DD

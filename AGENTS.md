@@ -39,3 +39,20 @@ Docs: https://docs.expo.dev/eas/index.md
 - If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+
+## Regras Obrigatórias — 12 Leis de UX em Toda Criação/Edição de UI
+
+Ao criar ou modificar qualquer tela, fluxo, card, formulário ou diálogo neste projeto, garanta conformidade com todas as 12 Leis de UX:
+
+1. **Lei de Jakob**: siga padrões esperados (`Ajustes`, ícones familiares), exija confirmação destrutiva (`confirmDestructiveAction`) antes de excluir dados e separe visualmente chips interativos de badges passivos.
+2. **Lei de Hick**: evite excesso de escolhas por item (toque na linha para editar + menu único `⋮` para ações secundárias; sem botões duplicados na mesma tela).
+3. **Lei de Fitts**: mantenha a ação principal grande e na zona natural do polegar (barra inferior fixa durante treino), controles com área de toque confortável (`>= 40×40 dp` / `hitSlop`) e botões sem corte de texto.
+4. **Lei de Miller**: mantenha blocos curtos e escaneáveis (cards recolhíveis, acordeão com apenas o primeiro item expandido e opções avançadas colapsadas).
+5. **Efeito Von Restorff**: destaque visualmente a ação principal (ex.: botão `Concluir` esmeralda) acima dos elementos secundários.
+6. **Efeito Estética-Usabilidade**: preserve tema claro padrão, alinhamento limpo, números tabulares (`tabular-nums`), eixos inteiros para contagens e validação visual sem cortes.
+7. **Lei da Proximidade**: mantenha controles relacionados no mesmo bloco (ex.: barra semanal unificada; filtros acima do conteúdo filtrado).
+8. **Efeito de Posição Serial**: priorize no topo o conteúdo de uso imediato (compactando cabeçalhos durante treino ativo; backup local no topo) e no rodapé a ação de conclusão.
+9. **Regra do Pico-Final**: encerre fluxos-chave com resumo de conquista e próximo passo claro (`WorkoutCompletedDialog`).
+10. **Limite de Doherty**: evite travamentos e relayouts de listas (`FlashList`) usando dock/overlay absoluto para timers transitórios e feedback imediato ao toque.
+11. **Lei de Tesler**: reduza esforço manual com placeholders do histórico anterior, preenchimento automático ao marcar `✓`, duplicação de treinos em 1 toque e limpeza automática do timer ao concluir.
+12. **Efeito Zeigarnik**: mostre progresso da sessão, meta semanal e streak de consistência para incentivar conclusão contínua.

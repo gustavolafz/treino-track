@@ -499,19 +499,14 @@ export default function RotinaScreen() {
             <View className="flex-row gap-2">
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Dias de Treino
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.75}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {weeklyTotals.trainingDays}/7
                   </Text>
@@ -519,19 +514,14 @@ export default function RotinaScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Exercícios
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.75}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {weeklyTotals.totalExercises}
                   </Text>
@@ -539,19 +529,14 @@ export default function RotinaScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Séries / Sem
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
                     minimumFontScale={0.75}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {weeklyTotals.totalSets}
                   </Text>

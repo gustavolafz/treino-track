@@ -321,19 +321,14 @@ export default function EvolucaoScreen() {
         <View className="flex-row gap-2">
           <Card className="flex-1">
             <CardContent className="flex-1 items-center justify-center px-2 py-3">
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                className="text-center text-[11px] text-muted-foreground"
-              >
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                 Peso Atual
               </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.72}
-                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
               >
                 {bodyCharts.latest ? `${formatMetric(bodyCharts.latest.weightKg)} kg` : '--'}
               </Text>
@@ -341,19 +336,14 @@ export default function EvolucaoScreen() {
           </Card>
           <Card className="flex-1">
             <CardContent className="flex-1 items-center justify-center px-2 py-3">
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                className="text-center text-[11px] text-muted-foreground"
-              >
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                 BF %
               </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.72}
-                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
               >
                 {bodyCharts.latest?.bodyFatPct !== undefined
                   ? `${formatMetric(bodyCharts.latest.bodyFatPct)}%`
@@ -363,19 +353,14 @@ export default function EvolucaoScreen() {
           </Card>
           <Card className="flex-1">
             <CardContent className="flex-1 items-center justify-center px-2 py-3">
-              <Text
-                numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.8}
-                className="text-center text-[11px] text-muted-foreground"
-              >
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                 Massa Magra
               </Text>
               <Text
                 numberOfLines={1}
                 adjustsFontSizeToFit
-                minimumFontScale={0.72}
-                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
               >
                 {bodyCharts.latestLean !== null ? `${formatMetric(bodyCharts.latestLean)} kg` : '--'}
               </Text>
@@ -495,22 +480,17 @@ export default function EvolucaoScreen() {
             <View className="flex-row gap-2">
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <View className="flex-row items-center justify-center gap-1">
+                  <View className="h-4 flex-row items-center justify-center gap-1">
                     <Trophy size={12} color="#10b981" />
-                    <Text
-                      numberOfLines={1}
-                      adjustsFontSizeToFit
-                      minimumFontScale={0.8}
-                      className="text-center text-[11px] text-muted-foreground"
-                    >
+                    <Text numberOfLines={1} className="text-center text-[11px] text-muted-foreground">
                       Maior Carga
                     </Text>
                   </View>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {formatMetric(trainingCharts.bestWeight)} kg
                   </Text>
@@ -518,19 +498,16 @@ export default function EvolucaoScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <View className="h-4 items-center justify-center">
+                    <Text numberOfLines={1} className="text-center text-[11px] text-muted-foreground">
+                      1RM Est.
+                    </Text>
+                  </View>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
-                    1RM Est.
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {formatMetric(trainingCharts.best1RM)} kg
                   </Text>
@@ -538,19 +515,16 @@ export default function EvolucaoScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <View className="h-4 items-center justify-center">
+                    <Text numberOfLines={1} className="text-center text-[11px] text-muted-foreground">
+                      Total Reps
+                    </Text>
+                  </View>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
-                    Total Reps
-                  </Text>
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {trainingCharts.totalRepsPeriod}
                   </Text>
@@ -614,19 +588,14 @@ export default function EvolucaoScreen() {
             <View className="flex-row gap-2">
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Concluídos
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-emerald-500 tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-emerald-500 tabular-nums"
                   >
                     {consistencyData.totalDone}
                   </Text>
@@ -634,19 +603,14 @@ export default function EvolucaoScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Skipados
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-amber-500 tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-amber-500 tabular-nums"
                   >
                     {consistencyData.totalSkipped}
                   </Text>
@@ -654,19 +618,14 @@ export default function EvolucaoScreen() {
               </Card>
               <Card className="flex-1">
                 <CardContent className="flex-1 items-center justify-center px-2 py-3">
-                  <Text
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                    className="text-center text-[11px] text-muted-foreground"
-                  >
+                  <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
                     Aderência
                   </Text>
                   <Text
                     numberOfLines={1}
                     adjustsFontSizeToFit
-                    minimumFontScale={0.72}
-                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                    minimumFontScale={0.75}
+                    className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
                   >
                     {consistencyData.adherence}%
                   </Text>

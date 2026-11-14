@@ -39,14 +39,20 @@ export function triggerNativeHaptic(kind: HapticKind = 'tap'): void {
   }
 }
 
+const round1 = (n: number): number => {
+  if (!Number.isFinite(n)) return 0;
+  const r = Math.round((n + Number.EPSILON) * 10) / 10;
+  return Object.is(r, -0) ? 0 : r;
+};
+
 export function estimate1RMFast(weightKg: number, reps: number): number {
   if (nativeMod) {
-    return nativeMod.estimate1RM(weightKg, reps);
+    return round1(nativeMod.estimate1RM(weightKg, reps));
   }
   if (weightKg <= 0 || reps <= 0) return 0;
-  if (reps === 1) return Math.round(weightKg * 10) / 10;
+  if (reps === 1) return round1(weightKg);
   const clamped = Math.min(reps, 20);
-  return Math.round(weightKg * (1 + clamped / 30) * 10) / 10;
+  return round1(weightKg * (1 + clamped / 30));
 }
 
 export interface SessionSeriesTuple {
@@ -83,10 +89,10 @@ export function computeSetSeriesFast(
       for (let s = 0; s < sessionCount; s++) {
         const base = s * 4;
         out[s] = {
-          maxWeight: outTyped[base],
-          max1RM: outTyped[base + 1],
+          maxWeight: round1(outTyped[base]),
+          max1RM: round1(outTyped[base + 1]),
           totalReps: outTyped[base + 2],
-          totalVolume: outTyped[base + 3],
+          totalVolume: round1(outTyped[base + 3]),
         };
       }
       return out;
@@ -99,10 +105,10 @@ export function computeSetSeriesFast(
     for (let s = 0; s < sessionCount; s++) {
       const base = s * 4;
       out[s] = {
-        maxWeight: packed[base] ?? 0,
-        max1RM: packed[base + 1] ?? 0,
+        maxWeight: round1(packed[base] ?? 0),
+        max1RM: round1(packed[base + 1] ?? 0),
         totalReps: packed[base + 2] ?? 0,
-        totalVolume: packed[base + 3] ?? 0,
+        totalVolume: round1(packed[base + 3] ?? 0),
       };
     }
     return out;

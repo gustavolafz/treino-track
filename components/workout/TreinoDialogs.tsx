@@ -449,8 +449,8 @@ export const WorkoutCompletedDialog = React.memo(function WorkoutCompletedDialog
           </View>
         ) : null}
 
-        <View className="flex-row items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2.5">
-          <Text className="text-xs font-medium text-foreground">
+        <View className="flex-row items-center justify-between rounded-xl border border-emerald-500/35 bg-emerald-50 px-3.5 py-2.5 dark:border-emerald-500/30 dark:bg-emerald-950/60">
+          <Text className="flex-1 pr-2 text-xs font-medium text-foreground">
             {hitWeekGoal
               ? 'Meta da semana atingida!'
               : `Meta semanal: faltam ${Math.max(0, weekPlanned - weekCompleted)} treino(s)`}

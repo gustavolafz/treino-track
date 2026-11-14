@@ -313,8 +313,8 @@ export default function ConfigScreen() {
           <View
             className={`mb-3 flex-row items-center gap-2 rounded-xl border p-3 ${
               statusBanner.isError
-                ? 'border-destructive/40 bg-destructive/15'
-                : 'border-emerald-500/40 bg-emerald-500/15'
+                ? 'border-red-300 bg-red-50 dark:border-destructive/40 dark:bg-red-950/50'
+                : 'border-emerald-300 bg-emerald-50 dark:border-emerald-500/40 dark:bg-emerald-950/50'
             }`}
           >
             <CheckCircle2

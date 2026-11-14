@@ -14,7 +14,7 @@ import {
 } from '@/lib/historyIndex';
 import { rotateScheduleByDays } from '@/lib/schedule';
 import { buildInitialDemoData, createPresetSplit } from '@/lib/seedData';
-import { cn, estimate1RM, type WeekdayIndex } from '@/lib/utils';
+import { cn, estimate1RM, formatMetric, roundDecimal, type WeekdayIndex } from '@/lib/utils';
 import { computeSetSeriesFast, estimate1RMFast } from '@/modules/treino-native/index.web';
 
 test('rotateScheduleByDays shifts forward and backward as exact inverses', () => {
@@ -179,4 +179,12 @@ test('patchLastExerciseHistory and patchSplitCompletedCounts match full rebuilds
   );
   const countsAfterDelete = patchSplitCompletedCounts(countsAfterInsert, newLog, undefined);
   assert.equal(countsAfterDelete[newLog.splitId], initialCounts[newLog.splitId]);
+});
+
+test('roundDecimal and formatMetric strip IEEE-754 float drift from native/Epley values', () => {
+  assert.equal(roundDecimal(23.400000000000002, 1), 23.4);
+  assert.equal(formatMetric(23.400000000000002), '23.4');
+  assert.equal(formatMetric(18.5 * (1 + 8 / 30)), '23.4');
+  assert.equal(formatMetric(-0.0001), '0');
+  assert.equal(formatMetric(Number.NaN), '0');
 });

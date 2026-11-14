@@ -498,25 +498,61 @@ export default function RotinaScreen() {
           <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32, gap: 12 }}>
             <View className="flex-row gap-2">
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Dias de Treino</Text>
-                  <Text className="mt-0.5 text-lg font-bold text-foreground">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Dias de Treino
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
                     {weeklyTotals.trainingDays}/7
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Exercícios</Text>
-                  <Text className="mt-0.5 text-lg font-bold text-foreground">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Exercícios
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
                     {weeklyTotals.totalExercises}
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Séries / Sem</Text>
-                  <Text className="mt-0.5 text-lg font-bold text-foreground">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Séries / Sem
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.75}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
                     {weeklyTotals.totalSets}
                   </Text>
                 </CardContent>

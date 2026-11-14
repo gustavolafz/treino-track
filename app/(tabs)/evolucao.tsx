@@ -37,7 +37,7 @@ import {
   getMondayOfWeekCached,
   getWeekdayCached,
 } from '@/lib/dateCache';
-import { cn, toISODate } from '@/lib/utils';
+import { cn, formatMetric, roundDecimal, toISODate } from '@/lib/utils';
 import {
   useStoreActions,
   useThemePreference,
@@ -149,24 +149,26 @@ export default function EvolucaoScreen() {
 
     for (let i = 0; i < series.length; i++) {
       const pt = series[i];
-      if (pt.maxWeight > bestWeight) bestWeight = pt.maxWeight;
-      if (pt.max1RM > best1RM) best1RM = pt.max1RM;
+      const maxWeightRounded = roundDecimal(pt.maxWeight, 1);
+      const max1RMRounded = roundDecimal(pt.max1RM, 1);
+      if (maxWeightRounded > bestWeight) bestWeight = maxWeightRounded;
+      if (max1RMRounded > best1RM) best1RM = max1RMRounded;
       totalRepsPeriod += pt.totalReps;
       totalVolumePeriod += pt.totalVolume;
 
       const secondary =
         activeExerciseName !== '__ALL__'
-          ? `${pt.label} • 1RM est: ${pt.max1RM}kg`
+          ? `${pt.label} • 1RM est: ${formatMetric(max1RMRounded)}kg`
           : pt.label;
 
       loadPoints.push({
         label: pt.label,
-        value: pt.maxWeight,
+        value: maxWeightRounded,
         secondaryLabel: secondary,
       });
       repsPoints.push({
         label: pt.label,
-        value: pt.totalReps,
+        value: Math.round(pt.totalReps),
         secondaryLabel: pt.label,
       });
       volumePoints.push({
@@ -180,9 +182,9 @@ export default function EvolucaoScreen() {
       loadPoints,
       repsPoints,
       volumePoints,
-      bestWeight,
-      best1RM,
-      totalRepsPeriod,
+      bestWeight: roundDecimal(bestWeight, 1),
+      best1RM: roundDecimal(best1RM, 1),
+      totalRepsPeriod: Math.round(totalRepsPeriod),
       totalVolumePeriod: Math.round(totalVolumePeriod),
     };
   }, [activeExerciseName, analyticsRevision, cutoffISO]);
@@ -287,11 +289,12 @@ export default function EvolucaoScreen() {
         <Pressable
           onPress={() => setSelectedExercise(item)}
           className={cn(
-            'mr-1.5 rounded-full border px-3 py-1.5',
+            'mr-1.5 h-9 items-center justify-center rounded-full border px-3.5',
             active ? 'border-primary bg-primary' : 'border-border bg-card'
           )}
         >
           <Text
+            numberOfLines={1}
             className={cn(
               'text-xs font-semibold',
               active ? 'text-primary-foreground' : 'text-foreground'
@@ -317,28 +320,64 @@ export default function EvolucaoScreen() {
       <View className="gap-3 pb-2">
         <View className="flex-row gap-2">
           <Card className="flex-1">
-            <CardContent className="pt-3">
-              <Text className="text-[11px] text-muted-foreground">Peso Atual</Text>
-              <Text className="mt-1 text-lg font-bold text-foreground">
-                {bodyCharts.latest ? `${bodyCharts.latest.weightKg} kg` : '--'}
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                className="text-center text-[11px] text-muted-foreground"
+              >
+                Peso Atual
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+              >
+                {bodyCharts.latest ? `${formatMetric(bodyCharts.latest.weightKg)} kg` : '--'}
               </Text>
             </CardContent>
           </Card>
           <Card className="flex-1">
-            <CardContent className="pt-3">
-              <Text className="text-[11px] text-muted-foreground">BF %</Text>
-              <Text className="mt-1 text-lg font-bold text-foreground">
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                className="text-center text-[11px] text-muted-foreground"
+              >
+                BF %
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+              >
                 {bodyCharts.latest?.bodyFatPct !== undefined
-                  ? `${bodyCharts.latest.bodyFatPct}%`
+                  ? `${formatMetric(bodyCharts.latest.bodyFatPct)}%`
                   : '--'}
               </Text>
             </CardContent>
           </Card>
           <Card className="flex-1">
-            <CardContent className="pt-3">
-              <Text className="text-[11px] text-muted-foreground">Massa Magra</Text>
-              <Text className="mt-1 text-lg font-bold text-foreground">
-                {bodyCharts.latestLean !== null ? `${bodyCharts.latestLean} kg` : '--'}
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
+                className="text-center text-[11px] text-muted-foreground"
+              >
+                Massa Magra
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.72}
+                className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+              >
+                {bodyCharts.latestLean !== null ? `${formatMetric(bodyCharts.latestLean)} kg` : '--'}
               </Text>
             </CardContent>
           </Card>
@@ -455,28 +494,64 @@ export default function EvolucaoScreen() {
             {/* KPI Row */}
             <View className="flex-row gap-2">
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <View className="flex-row items-center gap-1">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <View className="flex-row items-center justify-center gap-1">
                     <Trophy size={12} color="#10b981" />
-                    <Text className="text-[11px] text-muted-foreground">Maior Carga</Text>
+                    <Text
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.8}
+                      className="text-center text-[11px] text-muted-foreground"
+                    >
+                      Maior Carga
+                    </Text>
                   </View>
-                  <Text className="mt-1 text-lg font-bold text-foreground">
-                    {trainingCharts.bestWeight} kg
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
+                    {formatMetric(trainingCharts.bestWeight)} kg
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">1RM Est.</Text>
-                  <Text className="mt-1 text-lg font-bold text-foreground">
-                    {trainingCharts.best1RM} kg
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    1RM Est.
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
+                    {formatMetric(trainingCharts.best1RM)} kg
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Total Reps</Text>
-                  <Text className="mt-1 text-lg font-bold text-foreground">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Total Reps
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
                     {trainingCharts.totalRepsPeriod}
                   </Text>
                 </CardContent>
@@ -538,51 +613,85 @@ export default function EvolucaoScreen() {
           <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32, gap: 12 }}>
             <View className="flex-row gap-2">
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Concluídos</Text>
-                  <Text className="mt-1 text-lg font-bold text-emerald-500">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Concluídos
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-emerald-500 tabular-nums"
+                  >
                     {consistencyData.totalDone}
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Skipados</Text>
-                  <Text className="mt-1 text-lg font-bold text-amber-500">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Skipados
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-amber-500 tabular-nums"
+                  >
                     {consistencyData.totalSkipped}
                   </Text>
                 </CardContent>
               </Card>
               <Card className="flex-1">
-                <CardContent className="pt-3">
-                  <Text className="text-[11px] text-muted-foreground">Aderência</Text>
-                  <Text className="mt-1 text-lg font-bold text-foreground">
+                <CardContent className="flex-1 items-center justify-center px-2 py-3">
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                    className="text-center text-[11px] text-muted-foreground"
+                  >
+                    Aderência
+                  </Text>
+                  <Text
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.72}
+                    className="mt-1 text-center text-lg font-bold text-foreground tabular-nums"
+                  >
                     {consistencyData.adherence}%
                   </Text>
                 </CardContent>
               </Card>
             </View>
 
-            <Card className="border-emerald-500/30 bg-emerald-500/10">
-              <CardContent className="flex-row items-center justify-between pt-3.5">
-                <View className="flex-1 flex-row items-center gap-2.5 pr-2">
-                  <Flame size={18} color="#10b981" />
-                  <View className="flex-1">
-                    <Text className="text-xs font-semibold text-foreground">
-                      {consistencyData.thisWeekDone >= consistencyData.weekPlanned && consistencyData.weekPlanned > 0
-                        ? 'Meta desta semana concluída!'
-                        : `Falta(m) ${Math.max(0, consistencyData.weekPlanned - consistencyData.thisWeekDone)} treino(s) para fechar a semana`}
-                    </Text>
-                    <Text className="text-[11px] text-muted-foreground">
-                      Semana atual: {consistencyData.thisWeekDone}/{consistencyData.weekPlanned} treinos
-                    </Text>
-                  </View>
+            <View className="flex-row items-center justify-between rounded-xl border border-emerald-500/35 bg-emerald-50 px-4 py-3.5 dark:border-emerald-500/30 dark:bg-emerald-950/60">
+              <View className="flex-1 flex-row items-center gap-2.5 pr-2">
+                <Flame size={18} color="#10b981" />
+                <View className="flex-1">
+                  <Text className="text-xs font-semibold text-foreground">
+                    {consistencyData.thisWeekDone >= consistencyData.weekPlanned && consistencyData.weekPlanned > 0
+                      ? 'Meta desta semana concluída!'
+                      : `Falta(m) ${Math.max(0, consistencyData.weekPlanned - consistencyData.thisWeekDone)} treino(s) para fechar a semana`}
+                  </Text>
+                  <Text className="text-[11px] text-muted-foreground">
+                    Semana atual: {consistencyData.thisWeekDone}/{consistencyData.weekPlanned} treinos
+                  </Text>
                 </View>
-                <Badge variant="success">
-                  <Text>{consistencyData.streakWeeks} sem. ativas</Text>
-                </Badge>
-              </CardContent>
-            </Card>
+              </View>
+              <Badge variant="success">
+                <Text>{consistencyData.streakWeeks} sem. ativas</Text>
+              </Badge>
+            </View>
 
             <ConsistencyBarChart
               title="Treinos por Semana"

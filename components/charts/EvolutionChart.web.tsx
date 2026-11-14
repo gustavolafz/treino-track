@@ -13,6 +13,7 @@ import Svg, {
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
+import { formatMetric, roundDecimal } from '@/lib/utils';
 import { useThemePreference } from '@/store/useWorkoutStore';
 
 export interface ChartPoint {
@@ -64,11 +65,11 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
   const stats = useMemo(() => {
     if (data.length === 0) return null;
     const values = data.map((d) => d.value);
-    const min = Math.min(...values);
-    const max = Math.max(...values);
-    const latest = values[values.length - 1];
-    const first = values[0];
-    const delta = +(latest - first).toFixed(1);
+    const min = roundDecimal(Math.min(...values), 1);
+    const max = roundDecimal(Math.max(...values), 1);
+    const latest = roundDecimal(values[values.length - 1], 1);
+    const first = roundDecimal(values[0], 1);
+    const delta = roundDecimal(latest - first, 1);
     const padding = max === min ? Math.max(1, max * 0.1) : (max - min) * 0.16;
     const yMin = Math.max(0, min - padding);
     const yMax = max + padding;
@@ -127,7 +128,7 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
         {stats ? (
           <View className="items-end">
             <Text className="text-lg font-bold text-foreground tabular-nums">
-              {stats.latest}
+              {formatMetric(stats.latest)}
               <Text className="text-xs font-normal text-muted-foreground"> {unit}</Text>
             </Text>
             <Badge
@@ -135,7 +136,7 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
               className="mt-0.5"
             >
               <Text>
-                {stats.delta > 0 ? `+${stats.delta}` : stats.delta} {unit}
+                {stats.delta > 0 ? `+${formatMetric(stats.delta)}` : formatMetric(stats.delta)} {unit}
               </Text>
             </Badge>
           </View>
@@ -150,11 +151,11 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
         <View className="mt-3" onLayout={onLayout}>
           {activePoint ? (
             <View className="mb-1.5 flex-row items-center justify-between rounded-md bg-secondary/70 px-2.5 py-1">
-              <Text className="text-[11px] font-medium text-muted-foreground">
+              <Text numberOfLines={1} className="flex-1 pr-2 text-[11px] font-medium text-muted-foreground">
                 {activePoint.secondaryLabel ?? activePoint.label}
               </Text>
               <Text className="text-xs font-bold text-foreground tabular-nums">
-                {activePoint.value} {unit}
+                {formatMetric(activePoint.value)} {unit}
               </Text>
             </View>
           ) : null}

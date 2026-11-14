@@ -125,11 +125,22 @@ export function parseRepsRange(targetReps: string): { min: number; max: number }
   return { min: 8, max: 12 };
 }
 
+export function roundDecimal(value: number, decimals = 1): number {
+  if (!Number.isFinite(value)) return 0;
+  const factor = 10 ** decimals;
+  const rounded = Math.round((value + Number.EPSILON) * factor) / factor;
+  return Object.is(rounded, -0) ? 0 : rounded;
+}
+
+export function formatMetric(value: number, maxDecimals = 1): string {
+  return String(roundDecimal(value, maxDecimals));
+}
+
 export function estimate1RM(weightKg: number, reps: number): number {
   if (weightKg <= 0 || reps <= 0) return 0;
-  if (reps === 1) return weightKg;
+  if (reps === 1) return roundDecimal(weightKg, 1);
   // Epley formula
-  return Math.round(weightKg * (1 + reps / 30) * 10) / 10;
+  return roundDecimal(weightKg * (1 + reps / 30), 1);
 }
 
 export function createId(prefix = 'id'): string {

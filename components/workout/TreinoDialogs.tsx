@@ -18,6 +18,7 @@ import {
   formatShortDateCached,
   getWeekdayCached,
 } from '@/lib/dateCache';
+import { queryCompletedExercisesWithCountSync } from '@/lib/database';
 import { rotateScheduleByDays } from '@/lib/schedule';
 import { cn, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import type { TrainingSplit } from '@/types/workout';
@@ -286,6 +287,18 @@ export const AddExerciseDialog = React.memo(function AddExerciseDialog({
   const [reps, setReps] = useState('5-9');
   const [rest, setRest] = useState('120');
 
+  const knownSuggestions = useMemo(() => {
+    if (!open) return [];
+    const q = name.trim().toLowerCase();
+    if (q.length < 2) return [];
+    return queryCompletedExercisesWithCountSync()
+      .filter((ex) => {
+        const lower = ex.name.toLowerCase();
+        return lower.includes(q) && lower !== q;
+      })
+      .slice(0, 4);
+  }, [name, open]);
+
   const handleConfirm = () => {
     if (!name.trim()) return;
     onAddExercise(
@@ -318,6 +331,19 @@ export const AddExerciseDialog = React.memo(function AddExerciseDialog({
             onChangeText={setName}
             placeholder="Ex: Crucifixo Máquina"
           />
+          {knownSuggestions.length > 0 ? (
+            <View className="mt-2 flex-row flex-wrap gap-1.5">
+              {knownSuggestions.map((s) => (
+                <Pressable
+                  key={s.name}
+                  onPress={() => setName(s.name)}
+                  className="rounded-full border border-border bg-secondary px-2.5 py-1 active:opacity-80"
+                >
+                  <Text className="text-xs font-medium text-foreground">{s.name}</Text>
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
         </View>
         <View>
           <Label>Grupo Muscular (opcional)</Label>

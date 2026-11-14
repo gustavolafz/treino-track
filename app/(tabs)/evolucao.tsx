@@ -1,5 +1,5 @@
 import { FlashList } from '@shopify/flash-list';
-import { Flame, Scale, Trash2, Trophy } from 'lucide-react-native';
+import { ChevronDown, Dumbbell, Flame, Scale, Trash2, Trophy, X } from 'lucide-react-native';
 import React, { useCallback, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import {
   type ChartPoint,
   type ConsistencyBarItem,
 } from '@/components/charts/EvolutionChart';
+import { ExercisePickerDialog } from '@/components/charts/ExercisePickerDialog';
 import {
   Badge,
   Button,
@@ -27,7 +28,7 @@ import {
 import { confirmDestructiveAction } from '@/components/ui/confirm';
 import {
   queryAllCompletedSessionsNativeSync,
-  queryDistinctCompletedExercisesSync,
+  queryCompletedExercisesWithCountSync,
   queryExerciseSeriesNativeSync,
   queryWeeklyConsistencySync,
 } from '@/lib/database';
@@ -54,7 +55,6 @@ const RANGE_OPTIONS: { key: RangeKey; label: string; days: number | null }[] = [
   { key: 'all', label: 'Tudo', days: null },
 ];
 
-const keyExtractorChip = (item: string) => item;
 const keyExtractorBodyMetric = (item: BodyMetricEntry) => item.id;
 
 interface BodyMetricRowProps {
@@ -110,6 +110,7 @@ export default function EvolucaoScreen() {
   const [range, setRange] = useState<RangeKey>('30d');
   const [tab, setTab] = useState('treino');
   const [selectedExercise, setSelectedExercise] = useState<string>('__ALL__');
+  const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
   const [bodyDialogOpen, setBodyDialogOpen] = useState(false);
 
   const cutoffISO = useMemo(() => {
@@ -119,17 +120,20 @@ export default function EvolucaoScreen() {
   }, [range, todayISO]);
 
   // Unique exercises queried directly from SQLite index (sorted by frequency DESC)
-  const exerciseNames = useMemo(() => {
+  const exerciseOptions = useMemo(() => {
     void analyticsRevision;
-    return queryDistinctCompletedExercisesSync();
+    return queryCompletedExercisesWithCountSync();
   }, [analyticsRevision]);
 
-  const activeExerciseName =
-    selectedExercise !== '__ALL__' && exerciseNames.includes(selectedExercise)
-      ? selectedExercise
-      : '__ALL__';
+  const activeExerciseOption = useMemo(
+    () =>
+      selectedExercise !== '__ALL__'
+        ? exerciseOptions.find((e) => e.name === selectedExercise) ?? null
+        : null,
+    [exerciseOptions, selectedExercise]
+  );
 
-  const chipItems = useMemo(() => ['__ALL__', ...exerciseNames], [exerciseNames]);
+  const activeExerciseName = activeExerciseOption ? activeExerciseOption.name : '__ALL__';
 
   // Training charts data (100% SQLite C JSI + C++20 zero-copy typed buffer aggregation)
   const trainingCharts = useMemo(() => {
@@ -282,31 +286,8 @@ export default function EvolucaoScreen() {
     return { bars, totalDone, totalSkipped, adherence, thisWeekDone, weekPlanned, streakWeeks };
   }, [activeSplit.weeklySchedule, analyticsRevision, cutoffISO, todayISO]);
 
-  const renderExerciseChip = useCallback(
-    ({ item }: { item: string }) => {
-      const active = activeExerciseName === item;
-      return (
-        <Pressable
-          onPress={() => setSelectedExercise(item)}
-          className={cn(
-            'mr-1.5 h-9 items-center justify-center rounded-full border px-3.5',
-            active ? 'border-primary bg-primary' : 'border-border bg-card'
-          )}
-        >
-          <Text
-            numberOfLines={1}
-            className={cn(
-              'text-xs font-semibold',
-              active ? 'text-primary-foreground' : 'text-foreground'
-            )}
-          >
-            {item === '__ALL__' ? 'Todos os Exercícios' : item}
-          </Text>
-        </Pressable>
-      );
-    },
-    [activeExerciseName]
-  );
+  const iconPrimary = isDark ? '#fafafa' : '#18181b';
+  const iconMuted = isDark ? '#a1a1aa' : '#71717a';
 
   const renderBodyMetricItem = useCallback(
     ({ item }: { item: BodyMetricEntry }) => (
@@ -465,15 +446,38 @@ export default function EvolucaoScreen() {
         {/* TAB 1: Carga, Reps & Volume */}
         <TabsContent value="treino" keepMounted className="flex-1">
           <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 32, gap: 12 }}>
-            <View className="py-1">
-              <FlashList
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                data={chipItems}
-                extraData={activeExerciseName}
-                keyExtractor={keyExtractorChip}
-                renderItem={renderExerciseChip}
-              />
+            <View className="flex-row items-center gap-2">
+              <Pressable
+                onPress={() => setExercisePickerOpen(true)}
+                className="h-11 flex-1 flex-row items-center justify-between rounded-xl border border-border bg-card px-3.5 active:opacity-80"
+              >
+                <View className="flex-1 flex-row items-center gap-2 pr-2">
+                  <Dumbbell size={15} color={iconPrimary} />
+                  <Text numberOfLines={1} className="flex-1 text-sm font-medium text-foreground">
+                    {activeExerciseName === '__ALL__' ? 'Todos os Exercícios' : activeExerciseName}
+                  </Text>
+                </View>
+                <View className="flex-row items-center gap-1.5">
+                  <Badge variant={activeExerciseOption ? 'success' : 'secondary'}>
+                    <Text className="tabular-nums">
+                      {activeExerciseOption
+                        ? `${activeExerciseOption.count} ${activeExerciseOption.count === 1 ? 'sessão' : 'sessões'}`
+                        : `${exerciseOptions.length} exerc.`}
+                    </Text>
+                  </Badge>
+                  <ChevronDown size={16} color={iconMuted} />
+                </View>
+              </Pressable>
+              {activeExerciseName !== '__ALL__' ? (
+                <Pressable
+                  onPress={() => setSelectedExercise('__ALL__')}
+                  accessibilityLabel="Limpar filtro de exercício"
+                  hitSlop={4}
+                  className="h-11 w-11 items-center justify-center rounded-xl border border-border bg-card active:bg-secondary"
+                >
+                  <X size={16} color={iconMuted} />
+                </Pressable>
+              ) : null}
             </View>
 
             {/* KPI Row */}
@@ -691,6 +695,14 @@ export default function EvolucaoScreen() {
           </ScrollView>
         </TabsContent>
       </Tabs>
+
+      <ExercisePickerDialog
+        open={exercisePickerOpen}
+        onOpenChange={setExercisePickerOpen}
+        exercises={exerciseOptions}
+        selectedExercise={activeExerciseName}
+        onSelectExercise={setSelectedExercise}
+      />
 
       <BodyMetricDialog
         open={bodyDialogOpen}

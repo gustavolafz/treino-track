@@ -895,7 +895,12 @@ export function querySplitCompletedCountsSync(): Record<string, number> {
   return counts;
 }
 
-export function queryDistinctCompletedExercisesSync(): string[] {
+export interface CompletedExerciseOption {
+  name: string;
+  count: number;
+}
+
+export function queryCompletedExercisesWithCountSync(): CompletedExerciseOption[] {
   initDatabaseSync();
   const rows = getDb().getAllSync<{ name: string; cnt: number }>(
     `SELECT TRIM(el.exercise_name) AS name, COUNT(DISTINCT wl.id) AS cnt
@@ -905,7 +910,11 @@ export function queryDistinctCompletedExercisesSync(): string[] {
      GROUP BY LOWER(TRIM(el.exercise_name))
      ORDER BY cnt DESC, name ASC`
   );
-  return rows.map((r) => r.name);
+  return rows.map((r) => ({ name: r.name, count: r.cnt }));
+}
+
+export function queryDistinctCompletedExercisesSync(): string[] {
+  return queryCompletedExercisesWithCountSync().map((r) => r.name);
 }
 
 export function queryWeeklyConsistencySync(

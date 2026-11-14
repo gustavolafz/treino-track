@@ -11,7 +11,7 @@ import {
   Trash2,
 } from 'lucide-react-native';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { triggerNativeHaptic } from '@/modules/treino-native';
 import {
@@ -80,6 +80,7 @@ export default function TreinoScreen() {
   const todayISO = useMemo(() => toISODate(new Date()), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayISO);
   const [weekMonday, setWeekMonday] = useState<string>(() => getMondayOfWeekCached(todayISO));
+  const [previewExpanded, setPreviewExpanded] = useState(false);
 
   // Subscribe ONLY to the active selected day's log so typing sets on today
   // never re-renders unrelated days or full week containers.
@@ -505,11 +506,19 @@ export default function TreinoScreen() {
             <CardContent>
               {plannedWorkout && plannedWorkout.exercises.length > 0 ? (
                 <View className="mb-4 rounded-lg border border-border bg-muted/40 p-3">
-                  <Text className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Prévia da Rotina
-                  </Text>
+                  <View className="mb-2 flex-row items-center justify-between">
+                    <Text className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Prévia da Rotina
+                    </Text>
+                    <Text className="text-[11px] font-medium text-muted-foreground tabular-nums">
+                      {plannedWorkout.exercises.length} exercícios
+                    </Text>
+                  </View>
                   <View className="gap-2">
-                    {plannedWorkout.exercises.map((ex, i) => (
+                    {(previewExpanded
+                      ? plannedWorkout.exercises
+                      : plannedWorkout.exercises.slice(0, 4)
+                    ).map((ex, i) => (
                       <View
                         key={ex.id}
                         className="flex-row items-center justify-between gap-2"
@@ -530,6 +539,18 @@ export default function TreinoScreen() {
                       </View>
                     ))}
                   </View>
+                  {plannedWorkout.exercises.length > 4 ? (
+                    <Pressable
+                      onPress={() => setPreviewExpanded((prev) => !prev)}
+                      className="mt-2.5 items-center rounded-md border border-border bg-card py-1.5 active:opacity-80"
+                    >
+                      <Text className="text-xs font-semibold text-foreground">
+                        {previewExpanded
+                          ? 'Mostrar menos'
+                          : `Ver mais ${plannedWorkout.exercises.length - 4} exercício(s)`}
+                      </Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
 

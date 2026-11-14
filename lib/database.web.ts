@@ -308,7 +308,12 @@ export function querySplitCompletedCountsSync(): Record<string, number> {
   return counts;
 }
 
-export function queryDistinctCompletedExercisesSync(): string[] {
+export interface CompletedExerciseOption {
+  name: string;
+  count: number;
+}
+
+export function queryCompletedExercisesWithCountSync(): CompletedExerciseOption[] {
   const data = readWebStore();
   const counts = new Map<string, { name: string; cnt: number }>();
   for (const l of data.logs) {
@@ -324,7 +329,11 @@ export function queryDistinctCompletedExercisesSync(): string[] {
   }
   return Array.from(counts.values())
     .sort((a, b) => (b.cnt !== a.cnt ? b.cnt - a.cnt : a.name.localeCompare(b.name)))
-    .map((v) => v.name);
+    .map((v) => ({ name: v.name, count: v.cnt }));
+}
+
+export function queryDistinctCompletedExercisesSync(): string[] {
+  return queryCompletedExercisesWithCountSync().map((v) => v.name);
 }
 
 export function queryWeeklyConsistencySync(

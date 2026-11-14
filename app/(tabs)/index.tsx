@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import {
   Check,
   Dumbbell,
+  Flame,
   Moon,
   Plus,
   RotateCcw,
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
 import { ExerciseLogCard } from '@/components/workout/ExerciseLogCard';
+import { CardioLogDialog } from '@/components/workout/CardioDialogs';
 import { RestTimerBar, type RestTimerTrigger } from '@/components/workout/RestTimerBar';
 import {
   AddExerciseDialog,
@@ -36,10 +38,12 @@ import {
   WorkoutCompletedDialog,
 } from '@/components/workout/TreinoDialogs';
 import { WeekStripHeader } from '@/components/workout/WeekStripHeader';
+import { formatCardioTimingLabel } from '@/lib/cardioCatalog';
 import {
   addDaysCached,
   formatFullDateCached,
   getMondayOfWeekCached,
+  getWeekdayCached,
 } from '@/lib/dateCache';
 import { getPlannedWorkoutIdForDate } from '@/lib/schedule';
 import { toISODate } from '@/lib/utils';
@@ -48,7 +52,7 @@ import {
   useThemePreference,
   useWorkoutStore,
 } from '@/store/useWorkoutStore';
-import type { ExerciseLog } from '@/types/workout';
+import type { CardioLog, CardioTiming, ExerciseLog } from '@/types/workout';
 
 const EMPTY_EXERCISES: ExerciseLog[] = [];
 
@@ -60,6 +64,7 @@ export default function TreinoScreen() {
   const activeSplit = useWorkoutStore((s) => s.activeSplit);
   const lastExerciseHistory = useWorkoutStore((s) => s.lastExerciseHistory);
   const logsByDate = useWorkoutStore((s) => s.logsByDate);
+  const cardioLogs = useWorkoutStore((s) => s.cardioLogs);
   const {
     toggleTheme,
     ensureDateRangeLoaded,
@@ -73,6 +78,8 @@ export default function TreinoScreen() {
     removeExerciseFromLog,
     setWorkoutStatus,
     deleteWorkoutLog,
+    upsertCardioLog,
+    deleteCardioLog,
   } = useStoreActions();
 
   const isDark = themePreference === 'dark';
@@ -108,12 +115,34 @@ export default function TreinoScreen() {
   const [switchDialogOpen, setSwitchDialogOpen] = useState(false);
   const [addExerciseOpen, setAddExerciseOpen] = useState(false);
   const [completedDialogOpen, setCompletedDialogOpen] = useState(false);
+  const [cardioDialogState, setCardioDialogState] = useState<{
+    open: boolean;
+    editing: CardioLog | null;
+    suggestedModality?: string;
+    suggestedMinutes?: number;
+    suggestedTiming?: CardioTiming;
+  }>({ open: false, editing: null });
 
   const plannedWorkout = useMemo(() => {
     const workoutId = getPlannedWorkoutIdForDate(activeSplit, selectedDate);
     if (!workoutId) return null;
     return activeSplit.workouts.find((w) => w.id === workoutId) ?? null;
   }, [activeSplit, selectedDate]);
+
+  const plannedCardioToday = useMemo(() => {
+    const weekday = getWeekdayCached(selectedDate);
+    return activeSplit.cardioSchedule?.[weekday] ?? null;
+  }, [activeSplit.cardioSchedule, selectedDate]);
+
+  const dayCardioLogs = useMemo(
+    () => cardioLogs.filter((c) => c.date === selectedDate),
+    [cardioLogs, selectedDate]
+  );
+
+  const dayCardioTotalMin = useMemo(
+    () => dayCardioLogs.reduce((acc, c) => acc + c.durationMinutes, 0),
+    [dayCardioLogs]
+  );
 
   const logSummary = useMemo(() => {
     if (!currentLog) return { completedSets: 0, totalSets: 0, totalReps: 0, volumeKg: 0 };
@@ -341,6 +370,187 @@ export default function TreinoScreen() {
     );
   }, [currentLog, handleFinishWorkout, iconPrimary, logSummary, selectedDate, setWorkoutStatus]);
 
+  const defaultCardioTiming: CardioTiming = useMemo(() => {
+    if (!currentLog && !plannedWorkout) return 'dia_off';
+    return 'pos_treino';
+  }, [currentLog, plannedWorkout]);
+
+  const handleOpenNewCardio = useCallback(
+    (presetModality?: string, presetMinutes?: number) => {
+      triggerNativeHaptic('tap');
+      setCardioDialogState({
+        open: true,
+        editing: null,
+        suggestedModality: presetModality,
+        suggestedMinutes: presetMinutes,
+        suggestedTiming: defaultCardioTiming,
+      });
+    },
+    [defaultCardioTiming]
+  );
+
+  const handleCompletePlannedCardioQuick = useCallback(() => {
+    if (!plannedCardioToday) return;
+    triggerNativeHaptic('confirm');
+    upsertCardioLog({
+      date: selectedDate,
+      modality: plannedCardioToday.modality,
+      durationMinutes: plannedCardioToday.targetMinutes,
+      intensity: 'Moderado',
+      timing: defaultCardioTiming,
+    });
+  }, [defaultCardioTiming, plannedCardioToday, selectedDate, upsertCardioLog]);
+
+  const listFooter = useMemo(() => {
+    return (
+      <View className="gap-3">
+        {workoutFooter}
+
+        <Card className={currentLog && currentLog.status !== 'skipped' ? 'mt-0' : 'mt-1'}>
+          <CardHeader className="pb-2.5">
+            <View className="flex-row items-center justify-between gap-2">
+              <View className="flex-1 flex-row items-center gap-2">
+                <View className="h-8 w-8 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950/60">
+                  <Flame size={16} color="#ea580c" />
+                </View>
+                <View className="flex-1">
+                  <CardTitle className="text-base">Cardio do Dia</CardTitle>
+                  <CardDescription className="text-xs">
+                    {plannedCardioToday
+                      ? `Meta do dia: ${plannedCardioToday.modality} • ${plannedCardioToday.targetMinutes} min`
+                      : 'Aeróbico complementar ou em dia de descanso'}
+                  </CardDescription>
+                </View>
+              </View>
+
+              {dayCardioTotalMin > 0 ? (
+                <Badge variant="success">
+                  <Text className="tabular-nums">{dayCardioTotalMin} min</Text>
+                </Badge>
+              ) : plannedCardioToday ? (
+                <Badge variant="outline">
+                  <Text>Planejado</Text>
+                </Badge>
+              ) : null}
+            </View>
+          </CardHeader>
+
+          <CardContent className="gap-2.5 pt-0">
+            {plannedCardioToday && dayCardioLogs.length === 0 ? (
+              <View className="gap-2.5 rounded-xl border border-orange-500/30 bg-orange-50 p-3 dark:bg-orange-950/40">
+                <Text className="text-xs font-medium text-orange-800 dark:text-orange-200">
+                  Cardio previsto hoje: {plannedCardioToday.modality} ({plannedCardioToday.targetMinutes} min)
+                </Text>
+                <View className="flex-row items-center gap-2">
+                  <Button
+                    size="sm"
+                    className="flex-1 bg-orange-600"
+                    haptic="confirm"
+                    onPress={handleCompletePlannedCardioQuick}
+                  >
+                    <Check size={14} color="#ffffff" />
+                    <Text className="text-white" numberOfLines={1}>
+                      Concluir {plannedCardioToday.targetMinutes}m
+                    </Text>
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1"
+                    onPress={() =>
+                      handleOpenNewCardio(
+                        plannedCardioToday.modality,
+                        plannedCardioToday.targetMinutes
+                      )
+                    }
+                  >
+                    <Text numberOfLines={1}>Personalizar</Text>
+                  </Button>
+                </View>
+              </View>
+            ) : null}
+
+            {dayCardioLogs.map((cLog) => (
+              <View
+                key={cLog.id}
+                className="flex-row items-center justify-between gap-2 rounded-xl border border-border bg-background/60 p-3"
+              >
+                <Pressable
+                  onPress={() => setCardioDialogState({ open: true, editing: cLog })}
+                  className="flex-1 gap-0.5 active:opacity-75"
+                >
+                  <View className="flex-row flex-wrap items-center gap-1.5">
+                    <Text className="text-sm font-semibold text-foreground">
+                      {cLog.modality}
+                    </Text>
+                    <Badge variant="secondary" className="px-1.5 py-0">
+                      <Text className="text-[10px] tabular-nums">{cLog.durationMinutes} min</Text>
+                    </Badge>
+                    {cLog.intensity ? (
+                      <Badge variant="outline" className="px-1.5 py-0">
+                        <Text className="text-[10px]">{cLog.intensity}</Text>
+                      </Badge>
+                    ) : null}
+                  </View>
+                  <Text className="text-xs text-muted-foreground tabular-nums">
+                    {[
+                      formatCardioTimingLabel(cLog.timing),
+                      cLog.distanceKm != null ? `${cLog.distanceKm} km` : null,
+                      cLog.calories != null ? `${cLog.calories} kcal` : null,
+                      cLog.notes ? cLog.notes : null,
+                    ]
+                      .filter(Boolean)
+                      .join(' • ')}
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  onPress={() =>
+                    confirmDestructiveAction(
+                      'Remover cardio?',
+                      `Excluir registro de "${cLog.modality}" (${cLog.durationMinutes} min)?`,
+                      () => deleteCardioLog(cLog.id)
+                    )
+                  }
+                  hitSlop={8}
+                  className="h-10 w-10 items-center justify-center rounded-lg active:bg-secondary"
+                >
+                  <Trash2 size={15} color="#ef4444" />
+                </Pressable>
+              </View>
+            ))}
+
+            <Button
+              variant={dayCardioLogs.length === 0 && !plannedCardioToday ? 'outline' : 'secondary'}
+              size="sm"
+              onPress={() =>
+                handleOpenNewCardio(
+                  plannedCardioToday?.modality,
+                  plannedCardioToday?.targetMinutes
+                )
+              }
+            >
+              <Plus size={14} color={iconPrimary} />
+              <Text>
+                {dayCardioLogs.length > 0 ? 'Adicionar outro cardio' : 'Registrar Cardio'}
+              </Text>
+            </Button>
+          </CardContent>
+        </Card>
+      </View>
+    );
+  }, [
+    currentLog,
+    dayCardioLogs,
+    dayCardioTotalMin,
+    deleteCardioLog,
+    handleCompletePlannedCardioQuick,
+    handleOpenNewCardio,
+    iconPrimary,
+    plannedCardioToday,
+    workoutFooter,
+  ]);
+
   const showBottomDock = isSessionActive || restTrigger !== null;
   const sessionPct =
     logSummary.totalSets > 0
@@ -356,7 +566,7 @@ export default function TreinoScreen() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{
           paddingHorizontal: 16,
-          paddingBottom: showBottomDock ? 148 : 32,
+          paddingBottom: showBottomDock ? 164 : 40,
         }}
         ListHeaderComponent={
           <View>
@@ -648,7 +858,19 @@ export default function TreinoScreen() {
         </Card>
           </View>
         }
-        ListFooterComponent={workoutFooter}
+        ListFooterComponent={listFooter}
+      />
+
+      <CardioLogDialog
+        open={cardioDialogState.open}
+        onOpenChange={(open) =>
+          setCardioDialogState((prev) => ({ ...prev, open }))
+        }
+        dateISO={selectedDate}
+        initialLog={cardioDialogState.editing}
+        suggestedModality={cardioDialogState.suggestedModality}
+        suggestedDurationMinutes={cardioDialogState.suggestedMinutes}
+        suggestedTiming={cardioDialogState.suggestedTiming}
       />
 
       <SkipDayDialog

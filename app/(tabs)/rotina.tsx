@@ -6,6 +6,7 @@ import {
   ChevronUp,
   Copy,
   Edit3,
+  Flame,
   Layers,
   MoreVertical,
   Plus,
@@ -24,6 +25,7 @@ import {
   ExerciseTemplateDialog,
   WorkoutTemplateDialog,
 } from '@/components/routine/RotinaDialogs';
+import { CardioPlanDayDialog } from '@/components/workout/CardioDialogs';
 import { ExerciseCatalogDialog } from '@/components/workout/ExerciseCatalogDialog';
 import {
   Badge,
@@ -40,15 +42,25 @@ import {
   Text,
 } from '@/components/ui';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
+import {
+  CARDIO_GOAL_PRESETS,
+  DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES,
+} from '@/lib/cardioCatalog';
 import { formatShortDateCached } from '@/lib/dateCache';
 import { getCycleStepIndexForDate } from '@/lib/schedule';
-import { cn, toISODate, WEEKDAYS_MON_SUN } from '@/lib/utils';
+import { cn, toISODate, WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import {
   useStoreActions,
   useThemePreference,
   useWorkoutStore,
 } from '@/store/useWorkoutStore';
-import type { AccentTag, ExerciseTemplate, TrainingSplit, WorkoutTemplate } from '@/types/workout';
+import type {
+  AccentTag,
+  CardioPlanSlot,
+  ExerciseTemplate,
+  TrainingSplit,
+  WorkoutTemplate,
+} from '@/types/workout';
 
 const keyExtractorWorkout = (item: WorkoutTemplate) => item.id;
 const keyExtractorSplit = (item: TrainingSplit) => item.id;
@@ -300,6 +312,7 @@ export default function RotinaScreen() {
     updateExerciseTemplate,
     deleteExerciseTemplate,
     moveExerciseTemplate,
+    updateActiveSplitCardioPlan,
   } = useStoreActions();
 
   const isDark = themePreference === 'dark';
@@ -331,6 +344,40 @@ export default function RotinaScreen() {
   } | null>(null);
   const [splitDialogOpen, setSplitDialogOpen] = useState(false);
   const [catalogDialogOpen, setCatalogDialogOpen] = useState(false);
+  const [cardioDayTarget, setCardioDayTarget] = useState<WeekdayIndex | null>(null);
+
+  const weeklyCardioGoal =
+    activeSplit.weeklyCardioGoalMinutes ?? DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES;
+  const cardioSchedule = useMemo(
+    () => activeSplit.cardioSchedule ?? {},
+    [activeSplit.cardioSchedule]
+  );
+
+  const plannedCardioWeekTotalMin = useMemo(() => {
+    let total = 0;
+    for (const wd of WEEKDAYS_MON_SUN) {
+      const slot = cardioSchedule[wd.day];
+      if (slot) total += slot.targetMinutes;
+    }
+    return total;
+  }, [cardioSchedule]);
+
+  const handleUpdateCardioGoal = useCallback(
+    (goalMin: number) => {
+      updateActiveSplitCardioPlan(goalMin, cardioSchedule);
+    },
+    [cardioSchedule, updateActiveSplitCardioPlan]
+  );
+
+  const handleSaveCardioDaySlot = useCallback(
+    (day: WeekdayIndex, slot: CardioPlanSlot | null) => {
+      updateActiveSplitCardioPlan(weeklyCardioGoal, {
+        ...cardioSchedule,
+        [day]: slot,
+      });
+    },
+    [cardioSchedule, updateActiveSplitCardioPlan, weeklyCardioGoal]
+  );
 
   const isCycleSplit =
     activeSplit.scheduleMode === 'cycle' &&
@@ -696,6 +743,93 @@ export default function RotinaScreen() {
                     })}
               </CardContent>
             </Card>
+
+            {/* Planejamento Semanal de Cardio */}
+            <Card className="mt-3">
+              <CardHeader className="pb-3">
+                <View className="flex-row items-center justify-between gap-2">
+                  <View className="flex-row items-center gap-2">
+                    <Flame size={17} color="#ea580c" />
+                    <CardTitle>Cardio da Semana</CardTitle>
+                  </View>
+                  <Badge variant="outline">
+                    <Text className="tabular-nums">Meta {weeklyCardioGoal} min/sem</Text>
+                  </Badge>
+                </View>
+                <CardDescription>
+                  Defina sua meta semanal e agende os dias opcionais de cardio
+                </CardDescription>
+
+                <View className="mt-2.5 flex-row items-center gap-1.5">
+                  {CARDIO_GOAL_PRESETS.map((goalMin) => {
+                    const active = weeklyCardioGoal === goalMin;
+                    return (
+                      <Pressable
+                        key={goalMin}
+                        onPress={() => handleUpdateCardioGoal(goalMin)}
+                        className={cn(
+                          'flex-1 min-h-[38px] items-center justify-center rounded-lg border py-1.5',
+                          active ? 'border-orange-500 bg-orange-600' : 'border-border bg-background'
+                        )}
+                      >
+                        <Text
+                          className={cn(
+                            'text-xs font-semibold tabular-nums',
+                            active ? 'text-white' : 'text-foreground'
+                          )}
+                          numberOfLines={1}
+                        >
+                          {goalMin}m
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                {plannedCardioWeekTotalMin > 0 ? (
+                  <Text className="mt-1.5 text-xs text-muted-foreground tabular-nums">
+                    Programado nos dias: {plannedCardioWeekTotalMin} min/sem
+                  </Text>
+                ) : null}
+              </CardHeader>
+
+              <CardContent className="gap-2">
+                {WEEKDAYS_MON_SUN.map((wd) => {
+                  const slot = cardioSchedule[wd.day] ?? null;
+                  return (
+                    <Pressable
+                      key={`cardio-${wd.day}`}
+                      onPress={() => setCardioDayTarget(wd.day)}
+                      className="flex-row items-center justify-between rounded-xl border border-border bg-background/60 p-3 active:opacity-80"
+                    >
+                      <View className="flex-row items-center gap-3">
+                        <View className="w-10 items-center rounded-md bg-secondary py-1">
+                          <Text className="text-xs font-bold uppercase text-secondary-foreground">
+                            {wd.short}
+                          </Text>
+                        </View>
+                        <View>
+                          <Text className="text-sm font-semibold text-foreground">
+                            {wd.label}
+                          </Text>
+                          <Text className="text-xs text-muted-foreground tabular-nums">
+                            {slot
+                              ? `${slot.modality} • ${slot.targetMinutes} min`
+                              : 'Sem cardio planejado'}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Badge variant={slot ? 'warning' : 'secondary'}>
+                        <Text className="tabular-nums">
+                          {slot ? `${slot.targetMinutes} min` : 'Livre'}
+                        </Text>
+                      </Badge>
+                    </Pressable>
+                  );
+                })}
+              </CardContent>
+            </Card>
           </ScrollView>
         </TabsContent>
 
@@ -779,6 +913,16 @@ export default function RotinaScreen() {
       <ExerciseCatalogDialog
         open={catalogDialogOpen}
         onOpenChange={setCatalogDialogOpen}
+      />
+
+      <CardioPlanDayDialog
+        day={cardioDayTarget}
+        dayLabel={
+          WEEKDAYS_MON_SUN.find((w) => w.day === cardioDayTarget)?.label ?? 'Dia'
+        }
+        currentSlot={cardioDayTarget !== null ? cardioSchedule[cardioDayTarget] ?? null : null}
+        onClose={() => setCardioDayTarget(null)}
+        onSaveSlot={handleSaveCardioDaySlot}
       />
 
       <ExerciseActionDialog

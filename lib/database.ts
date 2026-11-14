@@ -6,6 +6,11 @@ import { WEEKDAYS_MON_SUN, type WeekdayIndex } from '@/lib/utils';
 import type {
   AccentTag,
   BodyMetricEntry,
+  CardioIntensity,
+  CardioLog,
+  CardioModalityOption,
+  CardioPlanSlot,
+  CardioTiming,
   CatalogExercise,
   ExerciseLog,
   ExerciseTemplate,
@@ -46,6 +51,8 @@ export function initDatabaseSync(): void {
       ended_at TEXT,
       schedule_mode TEXT NOT NULL DEFAULT 'weekly',
       cycle_sequence_json TEXT,
+      weekly_cardio_goal_minutes INTEGER DEFAULT 120,
+      cardio_schedule_json TEXT,
       position INTEGER NOT NULL DEFAULT 0
     );
 
@@ -151,6 +158,27 @@ export function initDatabaseSync(): void {
       created_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_custom_ex_name ON custom_exercises(name);
+
+    CREATE TABLE IF NOT EXISTS cardio_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL,
+      modality TEXT NOT NULL,
+      duration_minutes INTEGER NOT NULL,
+      distance_km REAL,
+      calories INTEGER,
+      intensity TEXT,
+      timing TEXT,
+      notes TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_cardio_date ON cardio_logs(date DESC);
+
+    CREATE TABLE IF NOT EXISTS custom_cardio_modalities (
+      name TEXT PRIMARY KEY NOT NULL,
+      default_minutes INTEGER NOT NULL DEFAULT 20,
+      default_intensity TEXT NOT NULL DEFAULT 'Moderado',
+      created_at TEXT NOT NULL
+    );
   `);
 
   const splitCols = db.getAllSync<{ name: string }>('PRAGMA table_info(splits)');
@@ -159,6 +187,12 @@ export function initDatabaseSync(): void {
   }
   if (!splitCols.some((c) => c.name === 'cycle_sequence_json')) {
     db.execSync('ALTER TABLE splits ADD COLUMN cycle_sequence_json TEXT');
+  }
+  if (!splitCols.some((c) => c.name === 'weekly_cardio_goal_minutes')) {
+    db.execSync('ALTER TABLE splits ADD COLUMN weekly_cardio_goal_minutes INTEGER DEFAULT 120');
+  }
+  if (!splitCols.some((c) => c.name === 'cardio_schedule_json')) {
+    db.execSync('ALTER TABLE splits ADD COLUMN cardio_schedule_json TEXT');
   }
 
   runPendingSqliteMigrations(db);
@@ -240,6 +274,8 @@ interface SplitRow {
   ended_at: string | null;
   schedule_mode: string | null;
   cycle_sequence_json: string | null;
+  weekly_cardio_goal_minutes: number | null;
+  cardio_schedule_json: string | null;
 }
 
 interface WorkoutRow {
@@ -316,11 +352,12 @@ export interface HydratedSqliteEntities {
   splits: TrainingSplit[];
   logs: WorkoutLog[];
   bodyMetrics: BodyMetricEntry[];
+  cardioLogs?: CardioLog[];
 }
 
 function hydrateSplitsFromDb(db: SQLiteDatabase): TrainingSplit[] {
   const splitRows = db.getAllSync<SplitRow>(
-    'SELECT id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json FROM splits ORDER BY position ASC'
+    'SELECT id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json, weekly_cardio_goal_minutes, cardio_schedule_json FROM splits ORDER BY position ASC'
   );
   const workoutRows = db.getAllSync<WorkoutRow>(
     'SELECT id, split_id, name, accent FROM workouts ORDER BY position ASC'
@@ -391,6 +428,16 @@ function hydrateSplitsFromDb(db: SQLiteDatabase): TrainingSplit[] {
         cycleSequence = undefined;
       }
     }
+    let cardioSchedule: Partial<Record<WeekdayIndex, CardioPlanSlot | null>> | undefined;
+    if (s.cardio_schedule_json) {
+      try {
+        cardioSchedule = JSON.parse(s.cardio_schedule_json) as Partial<
+          Record<WeekdayIndex, CardioPlanSlot | null>
+        >;
+      } catch {
+        cardioSchedule = undefined;
+      }
+    }
     const scheduleMode: SplitScheduleMode = s.schedule_mode === 'cycle' ? 'cycle' : 'weekly';
     return {
       id: s.id,
@@ -401,6 +448,8 @@ function hydrateSplitsFromDb(db: SQLiteDatabase): TrainingSplit[] {
       endedAt: s.ended_at ?? undefined,
       scheduleMode,
       cycleSequence,
+      weeklyCardioGoalMinutes: s.weekly_cardio_goal_minutes ?? 120,
+      cardioSchedule,
       workouts: workoutsBySplit.get(s.id) ?? [],
       weeklySchedule: scheduleBySplit.get(s.id) ?? {
         0: null,
@@ -505,8 +554,9 @@ export function loadEntitiesFromSqliteSync(): HydratedSqliteEntities {
   );
   const logs = assembleWorkoutLogs(logRows, exLogRows, setLogRows);
   const bodyMetrics = hydrateBodyMetricsFromDb(db);
+  const cardioLogs = loadCardioLogsSync();
 
-  return { splits, logs, bodyMetrics };
+  return { splits, logs, bodyMetrics, cardioLogs };
 }
 
 export function loadBootEntitiesFromSqliteSync(
@@ -539,8 +589,9 @@ export function loadBootEntitiesFromSqliteSync(
   );
   const logs = assembleWorkoutLogs(logRows, exLogRows, setLogRows);
   const bodyMetrics = hydrateBodyMetricsFromDb(db);
+  const cardioLogs = loadCardioLogsSync();
 
-  return { splits, logs, bodyMetrics };
+  return { splits, logs, bodyMetrics, cardioLogs };
 }
 
 export function loadLogsInRangeSync(startIso: string, endIso: string): WorkoutLog[] {
@@ -580,7 +631,7 @@ function insertSplitGraphInsideTx(
   position: number
 ): void {
   db.runSync(
-    'INSERT OR REPLACE INTO splits (id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    'INSERT OR REPLACE INTO splits (id, name, description, status, started_at, ended_at, schedule_mode, cycle_sequence_json, weekly_cardio_goal_minutes, cardio_schedule_json, position) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     split.id,
     split.name,
     split.description,
@@ -589,6 +640,8 @@ function insertSplitGraphInsideTx(
     split.endedAt ?? null,
     split.scheduleMode ?? 'weekly',
     split.cycleSequence ? JSON.stringify(split.cycleSequence) : null,
+    split.weeklyCardioGoalMinutes ?? 120,
+    split.cardioSchedule ? JSON.stringify(split.cardioSchedule) : null,
     position
   );
 
@@ -696,6 +749,7 @@ export function replaceAllEntitiesInSqliteSync(entities: HydratedSqliteEntities)
       DELETE FROM workouts;
       DELETE FROM splits;
       DELETE FROM body_metrics;
+      DELETE FROM cardio_logs;
     `);
 
     for (let i = 0; i < entities.splits.length; i++) {
@@ -718,6 +772,24 @@ export function replaceAllEntitiesInSqliteSync(entities: HydratedSqliteEntities)
         b.armCm ?? null,
         b.chestCm ?? null,
         b.notes ?? null
+      );
+    }
+
+    const cardioList = entities.cardioLogs ?? [];
+    for (let i = 0; i < cardioList.length; i++) {
+      const c = cardioList[i];
+      db.runSync(
+        'INSERT OR REPLACE INTO cardio_logs (id, date, modality, duration_minutes, distance_km, calories, intensity, timing, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        c.id,
+        c.date,
+        c.modality,
+        c.durationMinutes,
+        c.distanceKm ?? null,
+        c.calories ?? null,
+        c.intensity ?? null,
+        c.timing ?? null,
+        c.notes ?? null,
+        c.updatedAt
       );
     }
   });
@@ -918,6 +990,113 @@ export function upsertCustomExerciseInDbSync(ex: CatalogExercise): void {
 export function deleteCustomExerciseInDbSync(id: string): void {
   initDatabaseSync();
   getDb().runSync('DELETE FROM custom_exercises WHERE id = ?', id);
+}
+
+interface CardioLogRow {
+  id: string;
+  date: string;
+  modality: string;
+  duration_minutes: number;
+  distance_km: number | null;
+  calories: number | null;
+  intensity: string | null;
+  timing: string | null;
+  notes: string | null;
+  updated_at: string;
+}
+
+export function loadCardioLogsSync(): CardioLog[] {
+  initDatabaseSync();
+  const rows = getDb().getAllSync<CardioLogRow>(
+    'SELECT id, date, modality, duration_minutes, distance_km, calories, intensity, timing, notes, updated_at FROM cardio_logs ORDER BY date DESC, updated_at DESC'
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    modality: r.modality,
+    durationMinutes: r.duration_minutes,
+    distanceKm: r.distance_km ?? undefined,
+    calories: r.calories ?? undefined,
+    intensity: (r.intensity as CardioIntensity) ?? undefined,
+    timing: (r.timing as CardioTiming) ?? undefined,
+    notes: r.notes ?? undefined,
+    updatedAt: r.updated_at,
+  }));
+}
+
+export function upsertCardioLogInDbSync(entry: CardioLog): void {
+  initDatabaseSync();
+  getDb().runSync(
+    'INSERT OR REPLACE INTO cardio_logs (id, date, modality, duration_minutes, distance_km, calories, intensity, timing, notes, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    entry.id,
+    entry.date,
+    entry.modality,
+    entry.durationMinutes,
+    entry.distanceKm ?? null,
+    entry.calories ?? null,
+    entry.intensity ?? null,
+    entry.timing ?? null,
+    entry.notes ?? null,
+    entry.updatedAt
+  );
+}
+
+export function deleteCardioLogInDbSync(id: string): void {
+  initDatabaseSync();
+  getDb().runSync('DELETE FROM cardio_logs WHERE id = ?', id);
+}
+
+interface CustomCardioRow {
+  name: string;
+  default_minutes: number;
+  default_intensity: string;
+}
+
+export function loadCustomCardioModalitiesSync(): CardioModalityOption[] {
+  initDatabaseSync();
+  const rows = getDb().getAllSync<CustomCardioRow>(
+    'SELECT name, default_minutes, default_intensity FROM custom_cardio_modalities ORDER BY name COLLATE NOCASE ASC'
+  );
+  return rows.map((r) => ({
+    name: r.name,
+    defaultMinutes: r.default_minutes,
+    defaultIntensity: (r.default_intensity as CardioIntensity) || 'Moderado',
+    isCustom: true,
+  }));
+}
+
+export function upsertCustomCardioModalityInDbSync(
+  name: string,
+  defaultMinutes: number,
+  defaultIntensity: CardioIntensity
+): void {
+  initDatabaseSync();
+  getDb().runSync(
+    'INSERT OR REPLACE INTO custom_cardio_modalities (name, default_minutes, default_intensity, created_at) VALUES (?, ?, ?, ?)',
+    name,
+    defaultMinutes,
+    defaultIntensity,
+    new Date().toISOString()
+  );
+}
+
+export function deleteCustomCardioModalityInDbSync(name: string): void {
+  initDatabaseSync();
+  getDb().runSync('DELETE FROM custom_cardio_modalities WHERE name = ?', name);
+}
+
+export function updateSplitCardioPlanInDbSync(
+  splitId: string,
+  weeklyGoalMinutes: number,
+  cardioSchedule: Partial<Record<WeekdayIndex, CardioPlanSlot | null>>
+): void {
+  initDatabaseSync();
+  getDb().runSync(
+    'UPDATE splits SET weekly_cardio_goal_minutes = ?, cardio_schedule_json = ? WHERE id = ?',
+    weeklyGoalMinutes,
+    JSON.stringify(cardioSchedule),
+    splitId
+  );
 }
 
 export function upsertBodyMetricInDbSync(entry: BodyMetricEntry): void {

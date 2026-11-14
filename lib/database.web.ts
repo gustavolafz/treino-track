@@ -3,6 +3,10 @@ import { formatShortDateCached } from '@/lib/dateCache';
 import type { WeekdayIndex } from '@/lib/utils';
 import type {
   BodyMetricEntry,
+  CardioIntensity,
+  CardioLog,
+  CardioModalityOption,
+  CardioPlanSlot,
   CatalogExercise,
   ExerciseLog,
   SetLog,
@@ -13,11 +17,13 @@ import type {
 
 const WEB_DB_KEY = 'treino_track_sqlite_web_fallback_v1';
 const WEB_CUSTOM_EX_KEY = 'treino_track_custom_exercises_v1';
+const WEB_CUSTOM_CARDIO_KEY = 'treino_track_custom_cardio_v1';
 
 export interface HydratedSqliteEntities {
   splits: TrainingSplit[];
   logs: WorkoutLog[];
   bodyMetrics: BodyMetricEntry[];
+  cardioLogs?: CardioLog[];
 }
 
 export interface ExerciseNativeSeriesPoint {
@@ -66,6 +72,7 @@ export function loadBootEntitiesFromSqliteSync(
     splits: data.splits,
     logs: data.logs.filter((l) => l.date >= recentCutoffIsoDate),
     bodyMetrics: data.bodyMetrics,
+    cardioLogs: data.cardioLogs ?? [],
   };
 }
 
@@ -235,6 +242,69 @@ export function deleteCustomExerciseInDbSync(id: string): void {
   if (typeof window === 'undefined') return;
   const list = loadCustomExercisesSync().filter((item) => item.id !== id);
   window.localStorage.setItem(WEB_CUSTOM_EX_KEY, JSON.stringify(list));
+}
+
+export function loadCardioLogsSync(): CardioLog[] {
+  return readWebStore().cardioLogs ?? [];
+}
+
+export function upsertCardioLogInDbSync(entry: CardioLog): void {
+  const data = readWebStore();
+  const prev = data.cardioLogs ?? [];
+  data.cardioLogs = [entry, ...prev.filter((c) => c.id !== entry.id)].sort((a, b) =>
+    b.date.localeCompare(a.date)
+  );
+  writeWebStore(data);
+}
+
+export function deleteCardioLogInDbSync(id: string): void {
+  const data = readWebStore();
+  data.cardioLogs = (data.cardioLogs ?? []).filter((c) => c.id !== id);
+  writeWebStore(data);
+}
+
+export function loadCustomCardioModalitiesSync(): CardioModalityOption[] {
+  try {
+    if (typeof window === 'undefined') return [];
+    const raw = window.localStorage.getItem(WEB_CUSTOM_CARDIO_KEY);
+    if (!raw) return [];
+    return JSON.parse(raw) as CardioModalityOption[];
+  } catch {
+    return [];
+  }
+}
+
+export function upsertCustomCardioModalityInDbSync(
+  name: string,
+  defaultMinutes: number,
+  defaultIntensity: CardioIntensity
+): void {
+  if (typeof window === 'undefined') return;
+  const prev = loadCustomCardioModalitiesSync().filter(
+    (m) => m.name.toLowerCase() !== name.trim().toLowerCase()
+  );
+  prev.push({ name: name.trim(), defaultMinutes, defaultIntensity, isCustom: true });
+  window.localStorage.setItem(WEB_CUSTOM_CARDIO_KEY, JSON.stringify(prev));
+}
+
+export function deleteCustomCardioModalityInDbSync(name: string): void {
+  if (typeof window === 'undefined') return;
+  const next = loadCustomCardioModalitiesSync().filter((m) => m.name !== name);
+  window.localStorage.setItem(WEB_CUSTOM_CARDIO_KEY, JSON.stringify(next));
+}
+
+export function updateSplitCardioPlanInDbSync(
+  splitId: string,
+  weeklyGoalMinutes: number,
+  cardioSchedule: Partial<Record<WeekdayIndex, CardioPlanSlot | null>>
+): void {
+  const data = readWebStore();
+  const target = data.splits.find((s) => s.id === splitId);
+  if (target) {
+    target.weeklyCardioGoalMinutes = weeklyGoalMinutes;
+    target.cardioSchedule = cardioSchedule;
+    writeWebStore(data);
+  }
 }
 
 export function upsertBodyMetricInDbSync(entry: BodyMetricEntry): void {

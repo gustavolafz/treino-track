@@ -1,10 +1,13 @@
 import { create } from 'zustand';
 import {
   deleteBodyMetricInDbSync,
+  deleteCardioLogInDbSync,
+  deleteCustomCardioModalityInDbSync,
   deleteCustomExerciseInDbSync,
   deleteSplitInDbSync,
   deleteWorkoutLogInDbSync,
   loadBootEntitiesFromSqliteSync,
+  loadCustomCardioModalitiesSync,
   loadCustomExercisesSync,
   loadEntitiesFromSqliteSync,
   loadLogsInRangeSync,
@@ -15,9 +18,12 @@ import {
   setActiveSplitInDbSync,
   updateCycleScheduleInDbSync,
   updateSetInDbSync,
+  updateSplitCardioPlanInDbSync,
   updateWeeklyScheduleInDbSync,
   updateWorkoutStatusInDbSync,
   upsertBodyMetricInDbSync,
+  upsertCardioLogInDbSync,
+  upsertCustomCardioModalityInDbSync,
   upsertCustomExerciseInDbSync,
   upsertSplitInDbSync,
   upsertWorkoutLogInDbSync,
@@ -49,6 +55,10 @@ import type {
   AppDataState,
   BackupConfig,
   BodyMetricEntry,
+  CardioIntensity,
+  CardioLog,
+  CardioModalityOption,
+  CardioPlanSlot,
   CatalogExercise,
   ExerciseLog,
   ExerciseTemplate,
@@ -107,6 +117,7 @@ function computeSplitCountsFromLogs(logs: WorkoutLog[]): Record<string, number> 
 interface HydratedBootState {
   data: AppDataState;
   customExercises: CatalogExercise[];
+  customCardioModalities: CardioModalityOption[];
   lastExerciseHistory: Record<string, ExerciseHistoryEntry[]>;
   completedCountBySplit: Record<string, number>;
   loadedCutoffDate: string;
@@ -122,6 +133,12 @@ function hydrateInitialState(): HydratedBootState {
   } catch {
     customExercises = [];
   }
+  let customCardioModalities: CardioModalityOption[] = [];
+  try {
+    customCardioModalities = loadCustomCardioModalitiesSync();
+  } catch {
+    customCardioModalities = [];
+  }
   if (meta.sqliteInitialized) {
     try {
       const entities = loadBootEntitiesFromSqliteSync(recentCutoff);
@@ -134,6 +151,7 @@ function hydrateInitialState(): HydratedBootState {
             splits: upgraded.splits,
             logs: upgraded.logs,
             bodyMetrics: upgraded.bodyMetrics,
+            cardioLogs: upgraded.cardioLogs,
           });
           writeFullMetaMmkv({
             version: upgraded.version,
@@ -145,6 +163,7 @@ function hydrateInitialState(): HydratedBootState {
           return {
             data: upgraded,
             customExercises,
+            customCardioModalities,
             lastExerciseHistory: buildLastExerciseHistory(upgraded.logs),
             completedCountBySplit: computeSplitCountsFromLogs(upgraded.logs),
             loadedCutoffDate: '1970-01-01',
@@ -160,9 +179,11 @@ function hydrateInitialState(): HydratedBootState {
             splits: entities.splits,
             logs: entities.logs,
             bodyMetrics: entities.bodyMetrics,
+            cardioLogs: entities.cardioLogs,
             backupConfig: meta.backupConfig,
           },
           customExercises,
+          customCardioModalities,
           lastExerciseHistory: buildLastExerciseHistory(entities.logs, olderSeeds),
           completedCountBySplit,
           loadedCutoffDate: recentCutoff,
@@ -181,6 +202,7 @@ function hydrateInitialState(): HydratedBootState {
       splits: initial.splits,
       logs: initial.logs,
       bodyMetrics: initial.bodyMetrics,
+      cardioLogs: initial.cardioLogs,
     });
     writeFullMetaMmkv({
       version: initial.version,
@@ -195,6 +217,7 @@ function hydrateInitialState(): HydratedBootState {
   return {
     data: initial,
     customExercises,
+    customCardioModalities,
     lastExerciseHistory: buildLastExerciseHistory(initial.logs),
     completedCountBySplit: computeSplitCountsFromLogs(initial.logs),
     loadedCutoffDate: '1970-01-01',
@@ -262,6 +285,22 @@ export interface WorkoutStoreActions {
   ) => CatalogExercise;
   deleteCustomExercise: (id: string) => void;
 
+  // Cardio
+  updateActiveSplitCardioPlan: (
+    weeklyGoalMinutes: number,
+    cardioSchedule: Partial<Record<WeekdayIndex, CardioPlanSlot | null>>
+  ) => void;
+  upsertCardioLog: (
+    payload: Omit<CardioLog, 'id' | 'updatedAt'> & { id?: string }
+  ) => CardioLog;
+  deleteCardioLog: (id: string) => void;
+  registerCustomCardioModality: (
+    name: string,
+    defaultMinutes?: number,
+    defaultIntensity?: CardioIntensity
+  ) => CardioModalityOption;
+  deleteCustomCardioModality: (name: string) => void;
+
   // Backup & Reset & Windowed Loading
   ensureDateRangeLoaded: (startIso: string, endIso: string) => void;
   getFullAppDataSnapshot: () => AppDataState;
@@ -274,6 +313,9 @@ export interface WorkoutStoreActions {
 export interface WorkoutStoreState {
   data: AppDataState;
   customExercises: CatalogExercise[];
+  cardioLogs: CardioLog[];
+  customCardioModalities: CardioModalityOption[];
+  cardioRevision: number;
   isLoading: boolean;
   activeSplit: TrainingSplit;
   logsByDate: Record<string, WorkoutLog>;
@@ -294,6 +336,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         splits: next.splits,
         logs: next.logs,
         bodyMetrics: next.bodyMetrics,
+        cardioLogs: next.cardioLogs ?? [],
       });
       writeFullMetaMmkv({
         version: next.version,
@@ -1238,6 +1281,135 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
       }));
     },
 
+    updateActiveSplitCardioPlan: (weeklyGoalMinutes, cardioSchedule) => {
+      const normalizedGoal = Math.max(15, Math.min(1440, Math.round(weeklyGoalMinutes)));
+      set((store) => {
+        const activeId = store.activeSplit.id;
+        let nextActive = store.activeSplit;
+        const nextSplits = store.data.splits.map((sp) => {
+          if (sp.id !== activeId) return sp;
+          nextActive = {
+            ...sp,
+            weeklyCardioGoalMinutes: normalizedGoal,
+            cardioSchedule,
+          };
+          return nextActive;
+        });
+        try {
+          updateSplitCardioPlanInDbSync(activeId, normalizedGoal, cardioSchedule);
+        } catch (err) {
+          console.warn('Erro ao salvar plano semanal de cardio:', err);
+        }
+        return {
+          data: { ...store.data, splits: nextSplits },
+          activeSplit: nextActive,
+          cardioRevision: store.cardioRevision + 1,
+        };
+      });
+    },
+
+    upsertCardioLog: (payload) => {
+      const id = payload.id ?? createId('cardio');
+      const nowIso = new Date().toISOString();
+      const entry: CardioLog = {
+        id,
+        date: payload.date,
+        modality: payload.modality.trim() || 'Cardio',
+        durationMinutes: Math.max(1, Math.round(payload.durationMinutes)),
+        distanceKm:
+          payload.distanceKm != null && payload.distanceKm > 0
+            ? Math.round(payload.distanceKm * 100) / 100
+            : undefined,
+        calories:
+          payload.calories != null && payload.calories > 0
+            ? Math.round(payload.calories)
+            : undefined,
+        intensity: payload.intensity ?? 'Moderado',
+        timing: payload.timing ?? 'pos_treino',
+        notes: payload.notes?.trim() ? payload.notes.trim() : undefined,
+        updatedAt: nowIso,
+      };
+      try {
+        upsertCardioLogInDbSync(entry);
+      } catch (err) {
+        console.warn('Erro ao salvar registro de cardio:', err);
+      }
+      set((store) => {
+        const nextList = [entry, ...store.cardioLogs.filter((c) => c.id !== entry.id)].sort(
+          (a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt)
+        );
+        return {
+          data: { ...store.data, cardioLogs: nextList },
+          cardioLogs: nextList,
+          cardioRevision: store.cardioRevision + 1,
+        };
+      });
+      return entry;
+    },
+
+    deleteCardioLog: (id) => {
+      try {
+        deleteCardioLogInDbSync(id);
+      } catch (err) {
+        console.warn('Erro ao excluir registro de cardio:', err);
+      }
+      set((store) => {
+        const nextList = store.cardioLogs.filter((c) => c.id !== id);
+        return {
+          data: { ...store.data, cardioLogs: nextList },
+          cardioLogs: nextList,
+          cardioRevision: store.cardioRevision + 1,
+        };
+      });
+    },
+
+    registerCustomCardioModality: (
+      name,
+      defaultMinutes = 30,
+      defaultIntensity = 'Moderado'
+    ) => {
+      const cleanName = name.trim();
+      const normalizedMin = Math.max(5, Math.min(300, Math.round(defaultMinutes)));
+      const option: CardioModalityOption = {
+        name: cleanName,
+        defaultMinutes: normalizedMin,
+        defaultIntensity,
+        isCustom: true,
+      };
+      try {
+        upsertCustomCardioModalityInDbSync(cleanName, normalizedMin, defaultIntensity);
+      } catch (err) {
+        console.warn('Erro ao cadastrar modalidade de cardio:', err);
+      }
+      set((store) => {
+        const key = cleanName.toLowerCase();
+        const nextList = [
+          option,
+          ...store.customCardioModalities.filter((m) => m.name.toLowerCase() !== key),
+        ].sort((a, b) => a.name.localeCompare(b.name));
+        return {
+          customCardioModalities: nextList,
+          cardioRevision: store.cardioRevision + 1,
+        };
+      });
+      return option;
+    },
+
+    deleteCustomCardioModality: (name) => {
+      try {
+        deleteCustomCardioModalityInDbSync(name);
+      } catch (err) {
+        console.warn('Erro ao excluir modalidade de cardio:', err);
+      }
+      const key = name.trim().toLowerCase();
+      set((store) => ({
+        customCardioModalities: store.customCardioModalities.filter(
+          (m) => m.name.toLowerCase() !== key
+        ),
+        cardioRevision: store.cardioRevision + 1,
+      }));
+    },
+
     ensureDateRangeLoaded: (startIso, endIso) => {
       const store = get();
       if (startIso >= store.loadedCutoffDate) return;
@@ -1285,6 +1457,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
             splits: entities.splits,
             logs: entities.logs,
             bodyMetrics: entities.bodyMetrics,
+            cardioLogs: entities.cardioLogs,
             backupConfig: curr.backupConfig,
           };
         }
@@ -1305,14 +1478,20 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
     },
 
     replaceAllData: (newData) => {
-      persistFullState(newData);
+      const normalized: AppDataState = {
+        ...newData,
+        cardioLogs: newData.cardioLogs ?? [],
+      };
+      persistFullState(normalized);
       set((store) => ({
-        data: newData,
-        activeSplit: getActiveSplitFrom(newData.splits),
-        logsByDate: buildLogsByDate(newData.logs),
-        lastExerciseHistory: buildLastExerciseHistory(newData.logs),
-        completedCountBySplit: computeSplitCountsFromLogs(newData.logs),
+        data: normalized,
+        cardioLogs: normalized.cardioLogs ?? [],
+        activeSplit: getActiveSplitFrom(normalized.splits),
+        logsByDate: buildLogsByDate(normalized.logs),
+        lastExerciseHistory: buildLastExerciseHistory(normalized.logs),
+        completedCountBySplit: computeSplitCountsFromLogs(normalized.logs),
         analyticsRevision: store.analyticsRevision + 1,
+        cardioRevision: store.cardioRevision + 1,
         loadedCutoffDate: '1970-01-01',
       }));
     },
@@ -1328,11 +1507,13 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         persistFullState(nextData);
         return {
           data: nextData,
+          cardioLogs: [],
           activeSplit: getActiveSplitFrom(nextData.splits),
           logsByDate: buildLogsByDate(nextData.logs),
           lastExerciseHistory: buildLastExerciseHistory(nextData.logs),
           completedCountBySplit: computeSplitCountsFromLogs(nextData.logs),
           analyticsRevision: store.analyticsRevision + 1,
+          cardioRevision: store.cardioRevision + 1,
           loadedCutoffDate: '1970-01-01',
         };
       });
@@ -1349,11 +1530,13 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         persistFullState(nextData);
         return {
           data: nextData,
+          cardioLogs: nextData.cardioLogs ?? [],
           activeSplit: getActiveSplitFrom(nextData.splits),
           logsByDate: buildLogsByDate(nextData.logs),
           lastExerciseHistory: buildLastExerciseHistory(nextData.logs),
           completedCountBySplit: computeSplitCountsFromLogs(nextData.logs),
           analyticsRevision: store.analyticsRevision + 1,
+          cardioRevision: store.cardioRevision + 1,
           loadedCutoffDate: '1970-01-01',
         };
       });
@@ -1363,6 +1546,9 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
   return {
     data: initialData,
     customExercises: initialBoot.customExercises,
+    cardioLogs: initialData.cardioLogs ?? [],
+    customCardioModalities: initialBoot.customCardioModalities,
+    cardioRevision: 1,
     isLoading: false,
     activeSplit: getActiveSplitFrom(initialData.splits),
     logsByDate: buildLogsByDate(initialData.logs),

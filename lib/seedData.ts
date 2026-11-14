@@ -2,6 +2,7 @@ import { addDaysISO, createId, toISODate } from '@/lib/utils';
 import type {
   AppDataState,
   BodyMetricEntry,
+  CardioLog,
   ExerciseTemplate,
   TrainingSplit,
   WorkoutLog,
@@ -381,6 +382,52 @@ export function buildInitialDemoData(): AppDataState {
     { id: createId('bm'), date: addDaysISO(today, -1), weightKg: 80.5, bodyFatPct: 15.6, waistCm: 82.8 },
   ];
 
+  const cardioLogs: CardioLog[] = [
+    {
+      id: createId('cardio'),
+      date: addDaysISO(today, -12),
+      modality: 'Bicicleta Ergométrica',
+      durationMinutes: 25,
+      distanceKm: 10.5,
+      calories: 190,
+      intensity: 'Moderado',
+      timing: 'pos_treino',
+      updatedAt: `${addDaysISO(today, -12)}T20:45:00.000Z`,
+    },
+    {
+      id: createId('cardio'),
+      date: addDaysISO(today, -8),
+      modality: 'Esteira (Caminhada)',
+      durationMinutes: 30,
+      distanceKm: 2.8,
+      calories: 165,
+      intensity: 'Leve',
+      timing: 'dia_off',
+      updatedAt: `${addDaysISO(today, -8)}T18:30:00.000Z`,
+    },
+    {
+      id: createId('cardio'),
+      date: addDaysISO(today, -4),
+      modality: 'Escada (StairMaster)',
+      durationMinutes: 15,
+      calories: 185,
+      intensity: 'Intenso',
+      timing: 'pos_treino',
+      updatedAt: `${addDaysISO(today, -4)}T20:30:00.000Z`,
+    },
+    {
+      id: createId('cardio'),
+      date: addDaysISO(today, -1),
+      modality: 'Bicicleta Ergométrica',
+      durationMinutes: 30,
+      distanceKm: 12.6,
+      calories: 230,
+      intensity: 'Moderado',
+      timing: 'pos_treino',
+      updatedAt: `${addDaysISO(today, -1)}T20:40:00.000Z`,
+    },
+  ];
+
   return {
     version: 2,
     themePreference: 'light',
@@ -388,6 +435,7 @@ export function buildInitialDemoData(): AppDataState {
     splits: [pplul, ppl, fullBody],
     logs,
     bodyMetrics,
+    cardioLogs,
     backupConfig: {
       googleWebClientId: '',
       googleAndroidClientId: '',
@@ -406,6 +454,7 @@ export function buildCleanEmptyData(): AppDataState {
     splits: [starterSplit],
     logs: [],
     bodyMetrics: [],
+    cardioLogs: [],
     backupConfig: {
       googleWebClientId: '',
       googleAndroidClientId: '',

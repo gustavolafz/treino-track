@@ -44,6 +44,7 @@ export function parseBackupPayload(rawJson: string): AppDataState {
     splits: candidate.splits,
     logs: candidate.logs,
     bodyMetrics: candidate.bodyMetrics,
+    cardioLogs: Array.isArray(candidate.cardioLogs) ? candidate.cardioLogs : [],
     backupConfig: candidate.backupConfig ?? {
       googleWebClientId: '',
       googleAndroidClientId: '',

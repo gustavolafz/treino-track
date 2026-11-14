@@ -11,6 +11,7 @@ import {
   type ConsistencyBarItem,
 } from '@/components/charts/EvolutionChart';
 import { ExercisePickerDialog } from '@/components/charts/ExercisePickerDialog';
+import { CardioLogDialog } from '@/components/workout/CardioDialogs';
 import {
   Badge,
   Button,
@@ -19,6 +20,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Progress,
   Tabs,
   TabsContent,
   TabsList,
@@ -26,6 +28,10 @@ import {
   Text,
 } from '@/components/ui';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
+import {
+  DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES,
+  formatCardioTimingLabel,
+} from '@/lib/cardioCatalog';
 import {
   queryAllCompletedSessionsNativeSync,
   queryCompletedExercisesWithCountSync,
@@ -44,7 +50,7 @@ import {
   useThemePreference,
   useWorkoutStore,
 } from '@/store/useWorkoutStore';
-import type { BodyMetricEntry } from '@/types/workout';
+import type { BodyMetricEntry, CardioLog } from '@/types/workout';
 
 type RangeKey = '7d' | '30d' | '90d' | 'all';
 
@@ -95,15 +101,72 @@ const BodyMetricRow = React.memo(function BodyMetricRow({
   );
 });
 
+const keyExtractorCardioLog = (item: CardioLog) => item.id;
+
+const CardioLogRow = React.memo(function CardioLogRow({
+  entry,
+  onEdit,
+  onDelete,
+}: {
+  entry: CardioLog;
+  onEdit: (entry: CardioLog) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <View className="mb-2 flex-row items-center justify-between rounded-xl border border-border bg-card p-3">
+      <Pressable onPress={() => onEdit(entry)} className="flex-1 pr-2 active:opacity-75">
+        <View className="flex-row flex-wrap items-center gap-1.5">
+          <Text className="text-sm font-semibold text-foreground">
+            {entry.modality}
+          </Text>
+          <Badge variant="secondary" className="px-1.5 py-0">
+            <Text className="text-[10px] tabular-nums">{entry.durationMinutes} min</Text>
+          </Badge>
+          {entry.intensity ? (
+            <Badge variant="outline" className="px-1.5 py-0">
+              <Text className="text-[10px]">{entry.intensity}</Text>
+            </Badge>
+          ) : null}
+        </View>
+        <Text className="mt-0.5 text-[11px] text-muted-foreground tabular-nums">
+          {[
+            formatShortDateCached(entry.date),
+            formatCardioTimingLabel(entry.timing),
+            entry.distanceKm !== undefined ? `${formatMetric(entry.distanceKm)} km` : null,
+            entry.calories !== undefined ? `${entry.calories} kcal` : null,
+            entry.notes ? entry.notes : null,
+          ]
+            .filter(Boolean)
+            .join(' • ')}
+        </Text>
+      </Pressable>
+      <Pressable
+        onPress={() =>
+          confirmDestructiveAction(
+            'Excluir cardio?',
+            `Remover "${entry.modality}" de ${formatShortDateCached(entry.date)} (${entry.durationMinutes} min)?`,
+            () => onDelete(entry.id)
+          )
+        }
+        hitSlop={8}
+        className="h-10 w-10 items-center justify-center rounded-lg active:bg-secondary"
+      >
+        <Trash2 size={15} color="#ef4444" />
+      </Pressable>
+    </View>
+  );
+});
+
 export default function EvolucaoScreen() {
   const themePreference = useThemePreference();
   // Subscribe only to the SQLite analytics revision counter (0 re-renders while typing in-progress sets)
   const analyticsRevision = useWorkoutStore((s) => s.analyticsRevision);
+  const cardioLogs = useWorkoutStore((s) => s.cardioLogs);
   const activeSplit = useWorkoutStore((s) => s.activeSplit);
   const completedCountBySplit = useWorkoutStore((s) => s.completedCountBySplit);
   const bodyMetrics = useWorkoutStore((s) => s.data.bodyMetrics);
   const splits = useWorkoutStore((s) => s.data.splits);
-  const { upsertBodyMetric, deleteBodyMetric } = useStoreActions();
+  const { upsertBodyMetric, deleteBodyMetric, deleteCardioLog } = useStoreActions();
   const isDark = themePreference === 'dark';
 
   const todayISO = useMemo(() => toISODate(new Date()), []);
@@ -112,6 +175,10 @@ export default function EvolucaoScreen() {
   const [selectedExercise, setSelectedExercise] = useState<string>('__ALL__');
   const [exercisePickerOpen, setExercisePickerOpen] = useState(false);
   const [bodyDialogOpen, setBodyDialogOpen] = useState(false);
+  const [cardioDialogState, setCardioDialogState] = useState<{
+    open: boolean;
+    editing: CardioLog | null;
+  }>({ open: false, editing: null });
 
   const cutoffISO = useMemo(() => {
     const opt = RANGE_OPTIONS.find((r) => r.key === range);
@@ -388,6 +455,201 @@ export default function EvolucaoScreen() {
     [bodyCharts]
   );
 
+  const cardioCharts = useMemo(() => {
+    const weeklyGoalMin =
+      activeSplit.weeklyCardioGoalMinutes ?? DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES;
+    const currentMondayISO = getMondayOfWeekCached(todayISO);
+    const currentSundayISO = addDaysCached(currentMondayISO, 6);
+
+    let thisWeekMinutes = 0;
+    const filteredDesc: CardioLog[] = [];
+    for (const log of cardioLogs) {
+      if (log.date >= currentMondayISO && log.date <= currentSundayISO) {
+        thisWeekMinutes += log.durationMinutes;
+      }
+      if (!cutoffISO || log.date >= cutoffISO) {
+        filteredDesc.push(log);
+      }
+    }
+
+    const weeklyPct = Math.min(100, Math.round((thisWeekMinutes / weeklyGoalMin) * 100));
+    const remainingMin = Math.max(0, weeklyGoalMin - thisWeekMinutes);
+
+    let totalMinutes = 0;
+    let totalKm = 0;
+    const groupedByDate = new Map<string, { minutes: number; km: number; mods: string[] }>();
+
+    const asc = [...filteredDesc].sort((a, b) => a.date.localeCompare(b.date));
+    for (const log of asc) {
+      totalMinutes += log.durationMinutes;
+      if (log.distanceKm) totalKm += log.distanceKm;
+
+      const existing = groupedByDate.get(log.date);
+      if (existing) {
+        existing.minutes += log.durationMinutes;
+        existing.km += log.distanceKm ?? 0;
+        if (!existing.mods.includes(log.modality)) {
+          existing.mods.push(log.modality);
+        }
+      } else {
+        groupedByDate.set(log.date, {
+          minutes: log.durationMinutes,
+          km: log.distanceKm ?? 0,
+          mods: [log.modality],
+        });
+      }
+    }
+
+    const minutesPoints: ChartPoint[] = [];
+    const distancePoints: ChartPoint[] = [];
+    for (const [date, agg] of groupedByDate.entries()) {
+      const label = formatShortDateCached(date);
+      minutesPoints.push({
+        label,
+        value: Math.round(agg.minutes),
+        secondaryLabel: `${label} • ${agg.mods.join(', ')}`,
+      });
+      if (agg.km > 0) {
+        distancePoints.push({
+          label,
+          value: roundDecimal(agg.km, 1),
+          secondaryLabel: `${label} • ${agg.mods.join(', ')}`,
+        });
+      }
+    }
+
+    return {
+      weeklyGoalMin,
+      thisWeekMinutes,
+      weeklyPct,
+      remainingMin,
+      totalMinutes,
+      sessionCount: filteredDesc.length,
+      totalKm: roundDecimal(totalKm, 1),
+      minutesPoints,
+      distancePoints,
+      filteredDesc,
+    };
+  }, [activeSplit.weeklyCardioGoalMinutes, cardioLogs, cutoffISO, todayISO]);
+
+  const handleEditCardio = useCallback((entry: CardioLog) => {
+    setCardioDialogState({ open: true, editing: entry });
+  }, []);
+
+  const renderCardioItem = useCallback(
+    ({ item }: { item: CardioLog }) => (
+      <CardioLogRow entry={item} onEdit={handleEditCardio} onDelete={deleteCardioLog} />
+    ),
+    [deleteCardioLog, handleEditCardio]
+  );
+
+  const cardioTabHeader = useMemo(
+    () => (
+      <View className="gap-3 pb-2">
+        <View className="gap-2 rounded-xl border border-orange-500/35 bg-orange-50 px-4 py-3.5 dark:border-orange-500/30 dark:bg-orange-950/60">
+          <View className="flex-row items-center justify-between gap-2">
+            <View className="flex-1 flex-row items-center gap-2">
+              <Flame size={17} color="#f97316" />
+              <Text className="text-xs font-semibold text-foreground" numberOfLines={1}>
+                Meta semanal de cardio
+              </Text>
+            </View>
+            <Badge variant={cardioCharts.remainingMin === 0 ? 'success' : 'warning'}>
+              <Text className="tabular-nums">
+                {cardioCharts.thisWeekMinutes}/{cardioCharts.weeklyGoalMin} min ({cardioCharts.weeklyPct}%)
+              </Text>
+            </Badge>
+          </View>
+          <Progress
+            value={cardioCharts.weeklyPct}
+            indicatorClassName={
+              cardioCharts.remainingMin === 0 ? 'bg-emerald-500' : 'bg-orange-500'
+            }
+          />
+          <Text className="text-[11px] text-muted-foreground tabular-nums">
+            {cardioCharts.remainingMin === 0
+              ? 'Meta semanal de cardio concluída!'
+              : `Faltam ${cardioCharts.remainingMin} min para fechar a meta desta semana`}
+          </Text>
+        </View>
+
+        <View className="flex-row gap-2">
+          <Card className="flex-1">
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
+                Total Cardio
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-orange-600 dark:text-orange-400 tabular-nums"
+              >
+                {cardioCharts.totalMinutes} min
+              </Text>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
+                Sessões
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
+              >
+                {cardioCharts.sessionCount}
+              </Text>
+            </CardContent>
+          </Card>
+          <Card className="flex-1">
+            <CardContent className="flex-1 items-center justify-center px-2 py-3">
+              <Text numberOfLines={1} className="w-full text-center text-[11px] text-muted-foreground">
+                Distância
+              </Text>
+              <Text
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.75}
+                className="mt-1 w-full text-center text-lg font-bold text-foreground tabular-nums"
+              >
+                {cardioCharts.totalKm > 0 ? `${formatMetric(cardioCharts.totalKm)} km` : '--'}
+              </Text>
+            </CardContent>
+          </Card>
+        </View>
+
+        <EvolutionLineChart
+          title="Minutos de Cardio por Dia"
+          subtitle="Soma diária no período selecionado"
+          unit="min"
+          accentColor="#f97316"
+          data={cardioCharts.minutesPoints}
+          emptyMessage="Registre sessões de cardio na aba Treino ou em '+ Cardio' acima."
+        />
+
+        <EvolutionLineChart
+          title="Distância Percorrida"
+          subtitle="Quilômetros somados nos dias com distância informada"
+          unit="km"
+          accentColor="#06b6d4"
+          data={cardioCharts.distancePoints}
+          emptyMessage="Informe distância (km) ao registrar corrida, bike ou caminhada."
+        />
+
+        <View className="mt-1 flex-row items-center justify-between">
+          <Text className="text-base font-semibold text-foreground">Sessões de Cardio</Text>
+          <Text className="text-xs text-muted-foreground tabular-nums">
+            {cardioCharts.filteredDesc.length} registros
+          </Text>
+        </View>
+      </View>
+    ),
+    [cardioCharts]
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <View className="px-4">
@@ -398,26 +660,48 @@ export default function EvolucaoScreen() {
               Evolução & Gráficos
             </Text>
             <Text className="text-xs text-muted-foreground">
-              Acompanhe carga, reps, peso corporal e BF%
+              Acompanhe carga, cardio, peso e consistência
             </Text>
           </View>
-          <Button size="sm" onPress={() => setBodyDialogOpen(true)}>
-            <Scale size={14} color={isDark ? '#18181b' : '#fafafa'} />
-            <Text>+ Peso / BF</Text>
-          </Button>
+          {tab === 'cardio' ? (
+            <Button
+              size="sm"
+              className="bg-orange-600"
+              onPress={() => setCardioDialogState({ open: true, editing: null })}
+            >
+              <Flame size={14} color="#ffffff" />
+              <Text className="text-white">+ Cardio</Text>
+            </Button>
+          ) : (
+            <Button size="sm" onPress={() => setBodyDialogOpen(true)}>
+              <Scale size={14} color={isDark ? '#18181b' : '#fafafa'} />
+              <Text>+ Peso / BF</Text>
+            </Button>
+          )}
         </View>
       </View>
 
       <Tabs value={tab} onValueChange={setTab} className="flex-1 px-4">
         <TabsList>
           <TabsTrigger value="treino">
-            <Text>Carga & Reps</Text>
+            <Text numberOfLines={1} className="text-xs">
+              Cargas
+            </Text>
+          </TabsTrigger>
+          <TabsTrigger value="cardio">
+            <Text numberOfLines={1} className="text-xs">
+              Cardio
+            </Text>
           </TabsTrigger>
           <TabsTrigger value="corpo">
-            <Text>Peso & BF%</Text>
+            <Text numberOfLines={1} className="text-xs">
+              Corpo
+            </Text>
           </TabsTrigger>
           <TabsTrigger value="consistencia">
-            <Text>Consistência</Text>
+            <Text numberOfLines={1} className="text-xs">
+              Frequência
+            </Text>
           </TabsTrigger>
         </TabsList>
 
@@ -571,7 +855,23 @@ export default function EvolucaoScreen() {
           </ScrollView>
         </TabsContent>
 
-        {/* TAB 2: Corpo (Peso & BF%) with virtualized FlashList history */}
+        {/* TAB 2: Cardio */}
+        <TabsContent value="cardio" keepMounted className="flex-1">
+          <FlashList
+            data={cardioCharts.filteredDesc}
+            keyExtractor={keyExtractorCardioLog}
+            renderItem={renderCardioItem}
+            ListHeaderComponent={cardioTabHeader}
+            ListEmptyComponent={
+              <Text className="py-4 text-center text-xs text-muted-foreground">
+                Nenhum cardio registrado neste período.
+              </Text>
+            }
+            contentContainerStyle={{ paddingBottom: 32 }}
+          />
+        </TabsContent>
+
+        {/* TAB 3: Corpo (Peso & BF%) with virtualized FlashList history */}
         <TabsContent value="corpo" keepMounted className="flex-1">
           <FlashList
             data={bodyCharts.sortedDesc}
@@ -710,6 +1010,15 @@ export default function EvolucaoScreen() {
         onOpenChange={setBodyDialogOpen}
         todayISO={todayISO}
         onSave={upsertBodyMetric}
+      />
+
+      <CardioLogDialog
+        open={cardioDialogState.open}
+        onOpenChange={(open) =>
+          setCardioDialogState((prev) => ({ ...prev, open }))
+        }
+        dateISO={todayISO}
+        initialLog={cardioDialogState.editing}
       />
     </SafeAreaView>
   );

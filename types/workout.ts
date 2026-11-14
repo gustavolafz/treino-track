@@ -22,6 +22,34 @@ export interface WorkoutTemplate {
 
 export type SplitScheduleMode = 'weekly' | 'cycle';
 
+export type CardioIntensity = 'Leve' | 'Moderado' | 'Intenso';
+export type CardioTiming = 'pos_treino' | 'separado' | 'dia_off';
+
+export interface CardioPlanSlot {
+  modality: string;
+  targetMinutes: number;
+}
+
+export interface CardioModalityOption {
+  name: string;
+  defaultMinutes: number;
+  defaultIntensity: CardioIntensity;
+  isCustom: boolean;
+}
+
+export interface CardioLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  modality: string;
+  durationMinutes: number;
+  distanceKm?: number;
+  calories?: number;
+  intensity?: CardioIntensity;
+  timing?: CardioTiming;
+  notes?: string;
+  updatedAt: string; // ISO datetime
+}
+
 export interface TrainingSplit {
   id: string;
   name: string;
@@ -31,6 +59,8 @@ export interface TrainingSplit {
   endedAt?: string; // YYYY-MM-DD
   scheduleMode?: SplitScheduleMode; // defaults to 'weekly'
   cycleSequence?: (string | null)[]; // rolling sequence from startedAt when scheduleMode === 'cycle'
+  weeklyCardioGoalMinutes?: number; // weekly minutes target (defaults to 120)
+  cardioSchedule?: Partial<Record<WeekdayIndex, CardioPlanSlot | null>>;
   workouts: WorkoutTemplate[];
   weeklySchedule: Record<WeekdayIndex, string | null>; // workoutTemplateId or null for rest
 }
@@ -108,5 +138,6 @@ export interface AppDataState {
   splits: TrainingSplit[];
   logs: WorkoutLog[];
   bodyMetrics: BodyMetricEntry[];
+  cardioLogs?: CardioLog[];
   backupConfig: BackupConfig;
 }

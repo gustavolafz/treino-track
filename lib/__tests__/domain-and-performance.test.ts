@@ -14,6 +14,12 @@ import {
   matchesMuscleFilter,
 } from '@/lib/exerciseCatalog';
 import {
+  buildMergedCardioModalities,
+  CLASSIC_CARDIO_MODALITIES,
+  DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES,
+  formatCardioTimingLabel,
+} from '@/lib/cardioCatalog';
+import {
   buildLastExerciseHistory,
   patchLastExerciseHistory,
   patchSplitCompletedCounts,
@@ -23,7 +29,7 @@ import {
   rotateScheduleByDays,
   shiftCycleStartDate,
 } from '@/lib/schedule';
-import { buildInitialDemoData, createPresetSplit } from '@/lib/seedData';
+import { buildCleanEmptyData, buildInitialDemoData, createPresetSplit } from '@/lib/seedData';
 import { cn, estimate1RM, formatMetric, roundDecimal, type WeekdayIndex } from '@/lib/utils';
 import { computeSetSeriesFast, estimate1RMFast } from '@/modules/treino-native/index.web';
 
@@ -337,4 +343,51 @@ test('exerciseCatalog includes classic exercises without duplicates and merges c
   assert.ok(supSuggestions.every((s) => s.name.toLowerCase().includes('supi')));
   assert.ok(matchesMuscleFilter('Posterior Ombro', 'Ombros'));
   assert.ok(matchesMuscleFilter('Antebraço/Bíceps', 'Bíceps'));
+});
+
+test('cardioCatalog and seedData provide deduplicated modalities, timing labels, and valid cardio seed', () => {
+  assert.equal(DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES, 120);
+  assert.equal(CLASSIC_CARDIO_MODALITIES.length, 12);
+
+  const classicNames = new Set(
+    CLASSIC_CARDIO_MODALITIES.map((m) => m.name.trim().toLowerCase())
+  );
+  assert.equal(classicNames.size, CLASSIC_CARDIO_MODALITIES.length);
+
+  assert.equal(formatCardioTimingLabel('pos_treino'), 'Pós-treino');
+  assert.equal(formatCardioTimingLabel('separado'), 'Separado');
+  assert.equal(formatCardioTimingLabel('dia_off'), 'Dia Off');
+  assert.equal(formatCardioTimingLabel(undefined), 'Pós-treino');
+
+  const merged = buildMergedCardioModalities([
+    {
+      name: 'Spinning Intervalado',
+      defaultMinutes: 40,
+      defaultIntensity: 'Intenso',
+      isCustom: true,
+    },
+    {
+      name: 'Esteira (Caminhada)',
+      defaultMinutes: 25,
+      defaultIntensity: 'Leve',
+      isCustom: true,
+    },
+  ]);
+  assert.equal(merged[0].name, 'Spinning Intervalado');
+  assert.equal(merged[0].isCustom, true);
+  assert.equal(
+    merged.filter((m) => m.name.toLowerCase() === 'esteira (caminhada)').length,
+    1
+  );
+
+  const demo = buildInitialDemoData();
+  assert.ok(Array.isArray(demo.cardioLogs));
+  assert.equal(demo.cardioLogs.length, 4);
+  for (const c of demo.cardioLogs) {
+    assert.ok(c.durationMinutes > 0);
+    assert.ok(c.modality.length > 0);
+  }
+
+  const clean = buildCleanEmptyData();
+  assert.deepEqual(clean.cardioLogs, []);
 });

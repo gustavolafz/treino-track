@@ -1,6 +1,7 @@
-import { ChevronRight, Plus, TrendingUp, Trophy } from 'lucide-react-native';
+import { ChevronRight, Plus, TrendingUp } from 'lucide-react-native';
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, View } from 'react-native';
+import { CompletedCrestIllustration } from '@/components/ui/MinimalArt';
 import {
   Badge,
   Button,
@@ -469,18 +470,14 @@ export const WorkoutCompletedDialog = React.memo(function WorkoutCompletedDialog
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogHeader>
-        <View className="flex-row items-center gap-2">
-          <View className="h-9 w-9 items-center justify-center rounded-full bg-emerald-500/15">
-            <Trophy size={18} color="#10b981" />
-          </View>
-          <View className="flex-1">
-            <DialogTitle>{workoutName} concluído!</DialogTitle>
-            <DialogDescription>
-              Treino salvo no seu histórico e gráficos atualizados.
-            </DialogDescription>
-          </View>
+      <DialogHeader className="items-center">
+        <View className="mb-1">
+          <CompletedCrestIllustration />
         </View>
+        <DialogTitle className="text-center">{workoutName} concluído!</DialogTitle>
+        <DialogDescription className="text-center">
+          Treino salvo no seu histórico e gráficos atualizados.
+        </DialogDescription>
       </DialogHeader>
 
       <View className="gap-3">

@@ -15,6 +15,7 @@ import { runOnJS, useDerivedValue, useSharedValue } from 'react-native-reanimate
 import { triggerNativeHaptic } from '@/modules/treino-native';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
+import { EmptyChartIllustration } from '@/components/ui/MinimalArt';
 import { Text } from '@/components/ui/text';
 import { formatMetric, roundDecimal } from '@/lib/utils';
 import { useThemePreference } from '@/store/useWorkoutStore';
@@ -340,8 +341,9 @@ export const EvolutionLineChart = React.memo(function EvolutionLineChart({
       </View>
 
       {data.length === 0 || !stats || !linePath || !areaPath ? (
-        <View className="mt-4 items-center justify-center rounded-lg border border-dashed border-border py-10">
-          <Text className="px-4 text-center text-xs text-muted-foreground">{emptyMessage}</Text>
+        <View className="mt-4 items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-6">
+          <EmptyChartIllustration accentColor={accentColor} />
+          <Text className="text-center text-xs text-muted-foreground">{emptyMessage}</Text>
         </View>
       ) : (
         <View className="mt-3" onLayout={onLayout}>

@@ -28,6 +28,7 @@ import {
   Text,
 } from '@/components/ui';
 import { confirmDestructiveAction } from '@/components/ui/confirm';
+import { RestDayIllustration } from '@/components/ui/MinimalArt';
 import { ExerciseLogCard } from '@/components/workout/ExerciseLogCard';
 import { CardioLogDialog } from '@/components/workout/CardioDialogs';
 import { RestTimerBar, type RestTimerTrigger } from '@/components/workout/RestTimerBar';
@@ -761,7 +762,19 @@ export default function TreinoScreen() {
                     </Pressable>
                   ) : null}
                 </View>
-              ) : null}
+              ) : (
+                <View className="mb-3 flex-row items-center gap-3 rounded-xl border border-border/70 bg-secondary/40 px-3.5 py-3">
+                  <RestDayIllustration />
+                  <View className="flex-1">
+                    <Text className="text-xs font-semibold text-foreground">
+                      Recuperação Muscular
+                    </Text>
+                    <Text className="mt-0.5 text-[11px] leading-4 text-muted-foreground">
+                      Dia livre programado — aproveite para descansar ou fazer um cardio leve abaixo.
+                    </Text>
+                  </View>
+                </View>
+              )}
 
               <View className="flex-row flex-wrap gap-2">
                 {plannedWorkout ? (

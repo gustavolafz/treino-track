@@ -16,6 +16,7 @@ import {
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AjustesFooterMark } from '@/components/ui/MinimalArt';
 import {
   Badge,
   Button,
@@ -481,6 +482,16 @@ export default function ConfigScreen() {
             </View>
           </CardContent>
         </Card>
+
+        <View className="mt-4 mb-2 items-center gap-1.5">
+          <AjustesFooterMark />
+          <Text className="text-[11px] font-semibold tracking-wide text-muted-foreground/80">
+            TreinoTrack • v1.5.1
+          </Text>
+          <Text className="text-[10px] text-muted-foreground/60">
+            Progressão, constância e simplicidade
+          </Text>
+        </View>
       </ScrollView>
 
       {/* Dialog: Google OAuth Client ID Setup */}

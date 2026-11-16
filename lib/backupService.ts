@@ -1,5 +1,6 @@
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
+import { StorageAccessFramework } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
 import {
@@ -203,7 +204,7 @@ export async function pickLocalBackupDirectory(): Promise<{
   try {
     const picked = await Directory.pickDirectoryAsync();
     if (!picked?.uri) return null;
-    const rawName = picked.name?.trim();
+    const rawName = picked.name?.trim().replace(/^primary:/i, '');
     return {
       uri: picked.uri,
       label: rawName || 'Pasta selecionada',
@@ -224,10 +225,38 @@ export async function writeAutoBackupToLocalDirectory(
   if (Platform.OS === 'web') {
     throw new Error('Backup em pasta local disponível apenas no app móvel.');
   }
-  const dir = new Directory(dirUri);
   const json = JSON.stringify(createBackupPayload(state), null, 2);
 
-  // Remove old backup file first so Android SAF overwrites cleanly without "(1)" duplicates.
+  if (Platform.OS === 'android' && dirUri.startsWith('content://')) {
+    // Use StorageAccessFramework directly because FileSystemDirectory.createFile swaps args in expo-file-system v58.
+    try {
+      const existingUris = await StorageAccessFramework.readDirectoryAsync(dirUri);
+      for (const fileUri of existingUris) {
+        let decoded = fileUri;
+        try {
+          decoded = decodeURIComponent(fileUri);
+        } catch {
+          decoded = fileUri;
+        }
+        if (decoded.endsWith(`/${BACKUP_FILENAME}`) || decoded.endsWith(`:${BACKUP_FILENAME}`)) {
+          await StorageAccessFramework.deleteAsync(fileUri, { idempotent: true });
+        }
+      }
+    } catch {
+      // Directory may be empty; continue creating the backup file.
+    }
+
+    const baseName = BACKUP_FILENAME.replace(/\.json$/i, '');
+    const targetUri = await StorageAccessFramework.createFileAsync(
+      dirUri,
+      baseName,
+      'application/json'
+    );
+    await StorageAccessFramework.writeAsStringAsync(targetUri, json);
+    return { updatedAt: new Date().toISOString() };
+  }
+
+  const dir = new Directory(dirUri);
   try {
     const entries = dir.list();
     for (const entry of entries) {
@@ -236,10 +265,13 @@ export async function writeAutoBackupToLocalDirectory(
       }
     }
   } catch {
-    // Directory listing may throw if empty/unindexed on some SAF providers; proceed to create.
+    // Directory listing may throw if empty; continue creating file.
   }
 
-  const targetFile = dir.createFile('application/json', BACKUP_FILENAME);
+  const targetFile = new File(dir, BACKUP_FILENAME);
+  if (!targetFile.exists) {
+    targetFile.create({ overwrite: true });
+  }
   targetFile.write(json);
 
   return { updatedAt: new Date().toISOString() };

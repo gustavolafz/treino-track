@@ -479,7 +479,9 @@ export default function ConfigScreen() {
                   {autoLocalActive ? (
                     <>
                       <Text className="text-[11px] text-muted-foreground">
-                        Pasta: {backupConfig.localBackupDirLabel ?? 'Selecionada'} • Atualiza automaticamente após cada treino, cardio ou pesagem.
+                        Pasta:{' '}
+                        {(backupConfig.localBackupDirLabel ?? 'Selecionada').replace(/^primary:/i, '')}{' '}
+                        • Atualiza automaticamente após cada treino, cardio ou pesagem.
                       </Text>
                       {backupConfig.lastLocalAutoBackupAt ? (
                         <Text className="text-[11px] text-muted-foreground tabular-nums">
@@ -650,7 +652,7 @@ export default function ConfigScreen() {
         <View className="mt-4 mb-2 items-center gap-1.5">
           <AjustesFooterMark />
           <Text className="text-[11px] font-semibold tracking-wide text-muted-foreground/80">
-            TreinoTrack • v1.7.0
+            TreinoTrack • v1.7.1
           </Text>
           <Text className="text-[10px] text-muted-foreground/60">
             Progressão, constância e simplicidade

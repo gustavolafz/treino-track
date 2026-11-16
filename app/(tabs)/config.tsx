@@ -6,8 +6,11 @@ import {
   CloudDownload,
   CloudUpload,
   Download,
+  FolderOpen,
+  FolderSync,
   KeyRound,
   Moon,
+  RefreshCw,
   Sun,
   Upload,
 } from 'lucide-react-native';
@@ -30,6 +33,7 @@ import {
   DialogTitle,
   Input,
   Label,
+  Separator,
   Text,
 } from '@/components/ui';
 import {
@@ -37,6 +41,8 @@ import {
   fetchGoogleUserEmail,
   GOOGLE_DRIVE_SCOPES,
   importBackupFromLocalFile,
+  isDriveSessionActive,
+  pickLocalBackupDirectory,
   restoreBackupFromGoogleDrive,
   uploadBackupToGoogleDrive,
 } from '@/lib/backupService';
@@ -62,7 +68,7 @@ function GoogleDriveAuthPanel({
   const isDark = useThemePreference() === 'dark';
   const primaryFgColor = isDark ? '#18181b' : '#fafafa';
   const backupConfig = useWorkoutStore((s) => s.data.backupConfig);
-  const { updateBackupConfig, replaceAllData } = useStoreActions();
+  const { updateBackupConfig, replaceAllData, triggerAutoBackupNow } = useStoreActions();
   const [busy, setBusy] = useState(false);
 
   const [request, response, promptAsync] = Google.useAuthRequest({
@@ -72,61 +78,99 @@ function GoogleDriveAuthPanel({
     scopes: GOOGLE_DRIVE_SCOPES,
   });
 
-  const accessToken =
+  const liveAccessToken =
     response?.type === 'success' ? response.authentication?.accessToken ?? null : null;
+  const liveExpiresIn =
+    response?.type === 'success' ? response.authentication?.expiresIn : undefined;
+
+  const storedTokenValid = isDriveSessionActive(backupConfig);
+  const effectiveToken =
+    liveAccessToken ?? (storedTokenValid ? backupConfig.googleDriveAccessToken ?? null : null);
+  const autoDriveEnabled = Boolean(backupConfig.autoDriveBackupEnabled);
 
   useEffect(() => {
-    if (response?.type === 'success' && accessToken) {
-      fetchGoogleUserEmail(accessToken)
+    if (response?.type === 'success' && liveAccessToken) {
+      const expiresAt =
+        typeof liveExpiresIn === 'number' && liveExpiresIn > 0
+          ? Date.now() + liveExpiresIn * 1000
+          : undefined;
+      updateBackupConfig({
+        googleDriveAccessToken: liveAccessToken,
+        googleDriveTokenExpiresAt: expiresAt,
+        autoDriveBackupEnabled: true,
+        lastAutoBackupError: undefined,
+      });
+
+      fetchGoogleUserEmail(liveAccessToken)
         .then((email) => {
           if (email) {
             updateBackupConfig({ connectedEmail: email });
           }
           onStatusMessage(
             email
-              ? `Conectado ao Google Drive como ${email}.`
-              : 'Conectado ao Google Drive.'
+              ? `Conectado ao Google Drive como ${email}. Sync automático ativado!`
+              : 'Conectado ao Google Drive. Sync automático ativado!'
           );
         })
         .catch(() => {
-          onStatusMessage('Conectado ao Google Drive.');
+          onStatusMessage('Conectado ao Google Drive. Sync automático ativado!');
         });
+
+      void triggerAutoBackupNow();
     } else if (response?.type === 'error') {
       onStatusMessage('Falha na autenticação com o Google.', true);
     }
-  }, [accessToken, onStatusMessage, response?.type, updateBackupConfig]);
+  }, [
+    liveAccessToken,
+    liveExpiresIn,
+    onStatusMessage,
+    response?.type,
+    triggerAutoBackupNow,
+    updateBackupConfig,
+  ]);
 
   const handleDriveUpload = async () => {
-    if (!accessToken) {
+    if (!effectiveToken) {
       await promptAsync();
       return;
     }
     setBusy(true);
     try {
       const res = await uploadBackupToGoogleDrive(
-        accessToken,
+        effectiveToken,
         useWorkoutStore.getState().actions.getFullAppDataSnapshot()
       );
       updateBackupConfig({
         lastBackupAt: res.updatedAt,
+        lastAutoDriveSyncAt: res.updatedAt,
         lastBackupTarget: 'google_drive',
+        lastAutoBackupError: undefined,
       });
       onStatusMessage('Backup enviado com sucesso para o seu Google Drive!');
     } catch (err: any) {
-      onStatusMessage(err?.message ?? 'Erro ao enviar backup para o Drive.', true);
+      const msg = String(err?.message ?? '');
+      if (msg.includes('(401)')) {
+        updateBackupConfig({
+          googleDriveAccessToken: undefined,
+          googleDriveTokenExpiresAt: undefined,
+        });
+        onStatusMessage('Sessão expirada. Toque em "Conectar com Google" novamente.', true);
+      } else {
+        onStatusMessage(msg || 'Erro ao enviar backup para o Drive.', true);
+      }
     } finally {
       setBusy(false);
     }
   };
 
   const handleDriveRestore = async () => {
-    if (!accessToken) {
+    if (!effectiveToken) {
       await promptAsync();
       return;
     }
     setBusy(true);
     try {
-      const { data } = await restoreBackupFromGoogleDrive(accessToken);
+      const { data } = await restoreBackupFromGoogleDrive(effectiveToken);
       replaceAllData({
         ...data,
         backupConfig,
@@ -142,9 +186,9 @@ function GoogleDriveAuthPanel({
   return (
     <View className="gap-2.5">
       <View className="flex-row items-center justify-between rounded-lg border border-border bg-background/60 p-3">
-        <View className="flex-1">
+        <View className="flex-1 pr-2">
           <Text className="text-xs font-semibold text-foreground">
-            {accessToken ? 'Sessão Google Drive Ativa' : 'Pronto para conectar'}
+            {effectiveToken ? 'Sessão Google Drive Ativa' : 'Pronto para conectar'}
           </Text>
           <Text className="text-[11px] text-muted-foreground">
             {backupConfig.connectedEmail
@@ -152,37 +196,67 @@ function GoogleDriveAuthPanel({
               : 'Faça login para salvar e restaurar no Drive'}
           </Text>
         </View>
-        <Badge variant={accessToken ? 'success' : 'secondary'}>
-          <Text>{accessToken ? 'Conectado' : 'Desconectado'}</Text>
+        <Badge variant={effectiveToken ? 'success' : 'secondary'}>
+          <Text>{effectiveToken ? 'Conectado' : 'Desconectado'}</Text>
         </Badge>
       </View>
 
-      {!accessToken ? (
+      {!effectiveToken ? (
         <Button disabled={!request || busy} onPress={() => promptAsync()}>
           <Cloud size={16} color={primaryFgColor} />
-          <Text>Conectar com Google</Text>
+          <Text numberOfLines={1}>Conectar com Google</Text>
         </Button>
       ) : (
-        <View className="flex-row gap-2">
-          <Button className="flex-1" disabled={busy} onPress={handleDriveUpload}>
-            {busy ? (
-              <ActivityIndicator size="small" />
-            ) : (
-              <CloudUpload size={16} color={primaryFgColor} />
-            )}
-            <Text>Enviar pro Drive</Text>
-          </Button>
-          <Button
-            variant="outline"
-            className="flex-1"
-            disabled={busy}
-            onPress={handleDriveRestore}
-          >
-            <CloudDownload size={16} color="#10b981" />
-            <Text>Restaurar</Text>
-          </Button>
-        </View>
+        <>
+          <View className="flex-row gap-2">
+            <Button className="flex-1" disabled={busy} onPress={handleDriveUpload}>
+              {busy ? (
+                <ActivityIndicator size="small" />
+              ) : (
+                <CloudUpload size={16} color={primaryFgColor} />
+              )}
+              <Text numberOfLines={1}>Enviar pro Drive</Text>
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1"
+              disabled={busy}
+              onPress={handleDriveRestore}
+            >
+              <CloudDownload size={16} color="#10b981" />
+              <Text numberOfLines={1}>Restaurar</Text>
+            </Button>
+          </View>
+
+          <View className="flex-row items-center justify-between rounded-lg border border-border/70 bg-secondary/40 px-3 py-2">
+            <View className="flex-1 pr-2">
+              <Text className="text-xs font-semibold text-foreground">
+                Sync automático pós-treino
+              </Text>
+              <Text className="text-[11px] text-muted-foreground">
+                Atualiza o arquivo no Drive após treinos, cardios e pesagens
+              </Text>
+            </View>
+            <Button
+              variant={autoDriveEnabled ? 'secondary' : 'outline'}
+              size="sm"
+              onPress={() => {
+                const next = !autoDriveEnabled;
+                updateBackupConfig({ autoDriveBackupEnabled: next });
+                if (next) void triggerAutoBackupNow();
+              }}
+            >
+              <Text numberOfLines={1}>{autoDriveEnabled ? 'Ativo' : 'Pausado'}</Text>
+            </Button>
+          </View>
+        </>
       )}
+
+      {backupConfig.lastAutoDriveSyncAt ? (
+        <Text className="text-[11px] text-muted-foreground tabular-nums">
+          Último sync automático: {new Date(backupConfig.lastAutoDriveSyncAt).toLocaleString('pt-BR')}
+        </Text>
+      ) : null}
     </View>
   );
 }
@@ -197,6 +271,7 @@ export default function ConfigScreen() {
   const {
     toggleTheme,
     updateBackupConfig,
+    triggerAutoBackupNow,
     replaceAllData,
   } = useStoreActions();
 
@@ -271,6 +346,53 @@ export default function ConfigScreen() {
     showStatus('Credenciais OAuth do Google salvas.');
   };
 
+  const handlePickAutoLocalFolder = async () => {
+    setLocalBusy(true);
+    try {
+      const picked = await pickLocalBackupDirectory();
+      if (!picked) return;
+      updateBackupConfig({
+        autoLocalBackupEnabled: true,
+        localBackupDirUri: picked.uri,
+        localBackupDirLabel: picked.label,
+        lastAutoBackupError: undefined,
+      });
+      const res = await triggerAutoBackupNow();
+      if (res.errorMessage) {
+        showStatus(res.errorMessage, true);
+      } else {
+        showStatus(`Backup automático ativado na pasta "${picked.label}"!`);
+      }
+    } catch (err: any) {
+      showStatus(err?.message ?? 'Não foi possível selecionar a pasta.', true);
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const handleRunAutoLocalNow = async () => {
+    setLocalBusy(true);
+    try {
+      const res = await triggerAutoBackupNow();
+      if (res.errorMessage) {
+        showStatus(res.errorMessage, true);
+      } else {
+        showStatus('Backup automático atualizado com sucesso!');
+      }
+    } finally {
+      setLocalBusy(false);
+    }
+  };
+
+  const handleDisableAutoLocal = () => {
+    updateBackupConfig({ autoLocalBackupEnabled: false });
+    showStatus('Backup automático em pasta local pausado.');
+  };
+
+  const autoLocalActive = Boolean(
+    backupConfig.autoLocalBackupEnabled && backupConfig.localBackupDirUri
+  );
+
   return (
     <SafeAreaView className="flex-1 bg-background" edges={['top']}>
       <ScrollView className="flex-1 px-4" contentContainerStyle={{ paddingBottom: 36 }}>
@@ -330,8 +452,101 @@ export default function ConfigScreen() {
               </Button>
             </View>
             {backupConfig.lastBackupAt && backupConfig.lastBackupTarget !== 'google_drive' ? (
-              <Text className="text-[11px] text-muted-foreground">
+              <Text className="text-[11px] text-muted-foreground tabular-nums">
                 Último backup local: {new Date(backupConfig.lastBackupAt).toLocaleString('pt-BR')}
+              </Text>
+            ) : null}
+
+            {Platform.OS !== 'web' ? (
+              <>
+                <Separator />
+                <View className="gap-2.5 rounded-xl border border-border/70 bg-secondary/35 p-3">
+                  <View className="flex-row items-center justify-between gap-2">
+                    <View className="flex-1 flex-row items-center gap-2">
+                      <FolderSync
+                        size={16}
+                        color={autoLocalActive ? '#10b981' : iconPrimary}
+                      />
+                      <Text className="flex-1 text-xs font-semibold text-foreground" numberOfLines={1}>
+                        Backup Automático em Pasta (SAF)
+                      </Text>
+                    </View>
+                    <Badge variant={autoLocalActive ? 'success' : 'secondary'}>
+                      <Text>{autoLocalActive ? 'Ativo' : 'Inativo'}</Text>
+                    </Badge>
+                  </View>
+
+                  {autoLocalActive ? (
+                    <>
+                      <Text className="text-[11px] text-muted-foreground">
+                        Pasta: {backupConfig.localBackupDirLabel ?? 'Selecionada'} • Atualiza automaticamente após cada treino, cardio ou pesagem.
+                      </Text>
+                      {backupConfig.lastLocalAutoBackupAt ? (
+                        <Text className="text-[11px] text-muted-foreground tabular-nums">
+                          Último auto-backup:{' '}
+                          {new Date(backupConfig.lastLocalAutoBackupAt).toLocaleString('pt-BR')}
+                        </Text>
+                      ) : null}
+                      <View className="flex-row items-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="flex-1"
+                          disabled={localBusy}
+                          onPress={handlePickAutoLocalFolder}
+                        >
+                          <FolderOpen size={13} color={iconPrimary} />
+                          <Text numberOfLines={1}>Trocar Pasta</Text>
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          className="flex-1"
+                          disabled={localBusy}
+                          onPress={handleRunAutoLocalNow}
+                        >
+                          <RefreshCw size={13} color={iconPrimary} />
+                          <Text numberOfLines={1}>Salvar Agora</Text>
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={localBusy}
+                          onPress={handleDisableAutoLocal}
+                        >
+                          <Text className="text-muted-foreground" numberOfLines={1}>
+                            Pausar
+                          </Text>
+                        </Button>
+                      </View>
+                    </>
+                  ) : (
+                    <>
+                      <Text className="text-[11px] text-muted-foreground">
+                        Escolha uma pasta do celular (ex.: Downloads ou Google Drive offline) para manter o arquivo {`treino-track-backup.json`} atualizado automaticamente.
+                      </Text>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        disabled={localBusy}
+                        onPress={handlePickAutoLocalFolder}
+                      >
+                        <FolderOpen size={14} color={iconPrimary} />
+                        <Text numberOfLines={1}>
+                          {backupConfig.localBackupDirUri
+                            ? 'Reativar / Trocar Pasta'
+                            : 'Escolher Pasta Automática'}
+                        </Text>
+                      </Button>
+                    </>
+                  )}
+                </View>
+              </>
+            ) : null}
+
+            {backupConfig.lastAutoBackupError ? (
+              <Text className="text-[11px] text-amber-600 dark:text-amber-400">
+                Aviso auto-backup: {backupConfig.lastAutoBackupError}
               </Text>
             ) : null}
           </CardContent>
@@ -435,7 +650,7 @@ export default function ConfigScreen() {
         <View className="mt-4 mb-2 items-center gap-1.5">
           <AjustesFooterMark />
           <Text className="text-[11px] font-semibold tracking-wide text-muted-foreground/80">
-            TreinoTrack • v1.6.0
+            TreinoTrack • v1.7.0
           </Text>
           <Text className="text-[10px] text-muted-foreground/60">
             Progressão, constância e simplicidade

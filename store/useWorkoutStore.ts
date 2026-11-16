@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { runAutoBackupNow, type AutoBackupRunResult } from '@/lib/backupService';
 import {
   deleteBodyMetricInDbSync,
   deleteCardioLogInDbSync,
@@ -307,6 +308,7 @@ export interface WorkoutStoreActions {
   ensureDateRangeLoaded: (startIso: string, endIso: string) => void;
   getFullAppDataSnapshot: () => AppDataState;
   updateBackupConfig: (patch: Partial<BackupConfig>) => void;
+  triggerAutoBackupNow: () => Promise<AutoBackupRunResult>;
   replaceAllData: (newData: AppDataState) => void;
 }
 
@@ -364,6 +366,24 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
     return undefined;
   };
 
+  const triggerAutoBackupNow = (): Promise<AutoBackupRunResult> =>
+    runAutoBackupNow(
+      () => get().actions.getFullAppDataSnapshot(),
+      () => get().data.backupConfig,
+      (patch) => get().actions.updateBackupConfig(patch)
+    );
+
+  let autoBackupTimer: ReturnType<typeof setTimeout> | null = null;
+  const scheduleAutoBackup = () => {
+    const cfg = get().data.backupConfig;
+    if (!cfg.autoLocalBackupEnabled && !cfg.autoDriveBackupEnabled) return;
+    if (autoBackupTimer) clearTimeout(autoBackupTimer);
+    autoBackupTimer = setTimeout(() => {
+      autoBackupTimer = null;
+      void triggerAutoBackupNow();
+    }, 1500);
+  };
+
   const updateActiveSplit = (
     updater: (split: TrainingSplit) => TrainingSplit,
     onUpdated?: (updatedSplit: TrainingSplit) => void
@@ -392,6 +412,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         activeSplit: updatedSplit,
       };
     });
+    scheduleAutoBackup();
   };
 
   const actions: WorkoutStoreActions = {
@@ -823,6 +844,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           analyticsRevision: store.analyticsRevision + 1,
         };
       });
+      scheduleAutoBackup();
     },
 
     unskipDay: (dateISO) => {
@@ -1167,6 +1189,9 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           analyticsRevision: store.analyticsRevision + 1,
         };
       });
+      if (status === 'completed') {
+        scheduleAutoBackup();
+      }
     },
 
     deleteWorkoutLog: (dateISO) => {
@@ -1222,6 +1247,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           data: { ...store.data, bodyMetrics: sorted },
         };
       });
+      scheduleAutoBackup();
     },
 
     deleteBodyMetric: (id) => {
@@ -1238,6 +1264,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           },
         };
       });
+      scheduleAutoBackup();
     },
 
     registerCustomExercise: (payload) => {
@@ -1306,6 +1333,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           cardioRevision: store.cardioRevision + 1,
         };
       });
+      scheduleAutoBackup();
     },
 
     upsertCardioLog: (payload) => {
@@ -1344,6 +1372,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           cardioRevision: store.cardioRevision + 1,
         };
       });
+      scheduleAutoBackup();
       return entry;
     },
 
@@ -1361,6 +1390,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
           cardioRevision: store.cardioRevision + 1,
         };
       });
+      scheduleAutoBackup();
     },
 
     registerCustomCardioModality: (
@@ -1476,6 +1506,8 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         };
       });
     },
+
+    triggerAutoBackupNow: () => triggerAutoBackupNow(),
 
     replaceAllData: (newData) => {
       const normalized: AppDataState = {

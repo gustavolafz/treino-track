@@ -1,57 +1,28 @@
 import * as DocumentPicker from 'expo-document-picker';
-import { File, Paths } from 'expo-file-system';
+import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Platform } from 'react-native';
-import type { AppDataState } from '@/types/workout';
+import {
+  BACKUP_FILENAME,
+  type BackupEnvelope,
+  createBackupPayload,
+  isDriveSessionActive,
+  parseBackupPayload,
+} from '@/lib/backupHelpers';
+import type { AppDataState, BackupConfig } from '@/types/workout';
 
-export const BACKUP_FILENAME = 'treino-track-backup.json';
+export {
+  BACKUP_FILENAME,
+  type BackupEnvelope,
+  createBackupPayload,
+  isDriveSessionActive,
+  parseBackupPayload,
+};
+
 export const GOOGLE_DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
   'https://www.googleapis.com/auth/userinfo.email',
 ];
-
-export interface BackupEnvelope {
-  app: 'TreinoTrack';
-  schemaVersion: number;
-  exportedAt: string;
-  data: AppDataState;
-}
-
-export function createBackupPayload(state: AppDataState): BackupEnvelope {
-  return {
-    app: 'TreinoTrack',
-    schemaVersion: 1,
-    exportedAt: new Date().toISOString(),
-    data: state,
-  };
-}
-
-export function parseBackupPayload(rawJson: string): AppDataState {
-  const parsed = JSON.parse(rawJson);
-  const candidate = parsed?.app === 'TreinoTrack' && parsed?.data ? parsed.data : parsed;
-  if (
-    !candidate ||
-    !Array.isArray(candidate.splits) ||
-    !Array.isArray(candidate.logs) ||
-    !Array.isArray(candidate.bodyMetrics)
-  ) {
-    throw new Error('Arquivo de backup inválido ou incompatível.');
-  }
-  return {
-    version: candidate.version ?? 1,
-    themePreference: candidate.themePreference === 'dark' ? 'dark' : 'light',
-    isDemoSeeded: Boolean(candidate.isDemoSeeded),
-    splits: candidate.splits,
-    logs: candidate.logs,
-    bodyMetrics: candidate.bodyMetrics,
-    cardioLogs: Array.isArray(candidate.cardioLogs) ? candidate.cardioLogs : [],
-    backupConfig: candidate.backupConfig ?? {
-      googleWebClientId: '',
-      googleAndroidClientId: '',
-      googleIosClientId: '',
-    },
-  };
-}
 
 export async function exportBackupToLocalFile(state: AppDataState): Promise<void> {
   const json = JSON.stringify(createBackupPayload(state), null, 2);
@@ -220,4 +191,142 @@ export async function restoreBackupFromGoogleDrive(
     data: parseBackupPayload(raw),
     modifiedTime: existing.modifiedTime,
   };
+}
+
+export async function pickLocalBackupDirectory(): Promise<{
+  uri: string;
+  label: string;
+} | null> {
+  if (Platform.OS === 'web') {
+    throw new Error('Seleção de pasta automática disponível apenas no app Android/iOS.');
+  }
+  try {
+    const picked = await Directory.pickDirectoryAsync();
+    if (!picked?.uri) return null;
+    const rawName = picked.name?.trim();
+    return {
+      uri: picked.uri,
+      label: rawName || 'Pasta selecionada',
+    };
+  } catch (err: any) {
+    const msg = String(err?.message ?? '');
+    if (msg.toLowerCase().includes('cancel')) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function writeAutoBackupToLocalDirectory(
+  dirUri: string,
+  state: AppDataState
+): Promise<{ updatedAt: string }> {
+  if (Platform.OS === 'web') {
+    throw new Error('Backup em pasta local disponível apenas no app móvel.');
+  }
+  const dir = new Directory(dirUri);
+  const json = JSON.stringify(createBackupPayload(state), null, 2);
+
+  // Remove old backup file first so Android SAF overwrites cleanly without "(1)" duplicates.
+  try {
+    const entries = dir.list();
+    for (const entry of entries) {
+      if (entry instanceof File && entry.name === BACKUP_FILENAME && entry.exists) {
+        entry.delete();
+      }
+    }
+  } catch {
+    // Directory listing may throw if empty/unindexed on some SAF providers; proceed to create.
+  }
+
+  const targetFile = dir.createFile('application/json', BACKUP_FILENAME);
+  targetFile.write(json);
+
+  return { updatedAt: new Date().toISOString() };
+}
+
+export interface AutoBackupRunResult {
+  localUpdatedAt?: string;
+  driveUpdatedAt?: string;
+  errorMessage?: string;
+}
+
+let inFlightAutoBackup: Promise<AutoBackupRunResult> | null = null;
+
+/**
+ * Executes enabled automatic backups (local SAF folder and/or Google Drive) safely coalesced.
+ */
+export async function runAutoBackupNow(
+  getSnapshot: () => AppDataState,
+  getBackupConfig: () => BackupConfig,
+  updateBackupConfig: (patch: Partial<BackupConfig>) => void
+): Promise<AutoBackupRunResult> {
+  if (inFlightAutoBackup) {
+    return inFlightAutoBackup;
+  }
+
+  inFlightAutoBackup = (async () => {
+    const cfg = getBackupConfig();
+    const shouldRunLocal = Boolean(
+      cfg.autoLocalBackupEnabled && cfg.localBackupDirUri && Platform.OS !== 'web'
+    );
+    const shouldRunDrive = Boolean(
+      cfg.autoDriveBackupEnabled && isDriveSessionActive(cfg)
+    );
+
+    if (!shouldRunLocal && !shouldRunDrive) {
+      return {};
+    }
+
+    const snapshot = getSnapshot();
+    const patch: Partial<BackupConfig> = {};
+    const errors: string[] = [];
+    const result: AutoBackupRunResult = {};
+
+    if (shouldRunLocal && cfg.localBackupDirUri) {
+      try {
+        const res = await writeAutoBackupToLocalDirectory(cfg.localBackupDirUri, snapshot);
+        result.localUpdatedAt = res.updatedAt;
+        patch.lastLocalAutoBackupAt = res.updatedAt;
+        patch.lastBackupAt = res.updatedAt;
+        patch.lastBackupTarget = 'local_file';
+      } catch (err: any) {
+        errors.push(`Pasta local: ${err?.message ?? 'falha ao gravar arquivo'}`);
+      }
+    }
+
+    if (shouldRunDrive && cfg.googleDriveAccessToken) {
+      try {
+        const res = await uploadBackupToGoogleDrive(cfg.googleDriveAccessToken, snapshot);
+        result.driveUpdatedAt = res.updatedAt;
+        patch.lastAutoDriveSyncAt = res.updatedAt;
+        patch.lastBackupAt = res.updatedAt;
+        patch.lastBackupTarget = 'google_drive';
+      } catch (err: any) {
+        const rawMsg = String(err?.message ?? '');
+        if (rawMsg.includes('(401)')) {
+          patch.googleDriveAccessToken = undefined;
+          patch.googleDriveTokenExpiresAt = undefined;
+          errors.push('Sessão do Google Drive expirou — reconecte em Ajustes.');
+        } else {
+          errors.push(`Drive: ${rawMsg || 'falha no envio'}`);
+        }
+      }
+    }
+
+    if (errors.length > 0) {
+      const joined = errors.join(' | ');
+      patch.lastAutoBackupError = joined;
+      result.errorMessage = joined;
+    } else {
+      patch.lastAutoBackupError = undefined;
+    }
+
+    updateBackupConfig(patch);
+    return result;
+  })().finally(() => {
+    inFlightAutoBackup = null;
+  });
+
+  return inFlightAutoBackup;
 }

@@ -14,6 +14,11 @@ import {
   matchesMuscleFilter,
 } from '@/lib/exerciseCatalog';
 import {
+  createBackupPayload,
+  isDriveSessionActive,
+  parseBackupPayload,
+} from '@/lib/backupHelpers';
+import {
   buildMergedCardioModalities,
   CLASSIC_CARDIO_MODALITIES,
   DEFAULT_WEEKLY_CARDIO_GOAL_MINUTES,
@@ -396,4 +401,32 @@ test('cardioCatalog and seedData provide deduplicated modalities, timing labels,
   assert.deepEqual(clean.logs, []);
   assert.deepEqual(clean.bodyMetrics, []);
   assert.deepEqual(clean.cardioLogs, []);
+});
+
+test('backupHelpers sanitizes OAuth tokens, preserves cardioLogs, and validates Drive token TTL', () => {
+  const demo = buildInitialDemoData();
+  demo.backupConfig = {
+    ...demo.backupConfig,
+    autoLocalBackupEnabled: true,
+    localBackupDirLabel: 'Backups',
+    googleDriveAccessToken: 'ya29.secret-token-should-not-leak',
+    googleDriveTokenExpiresAt: 2_000_000,
+    autoDriveBackupEnabled: true,
+  };
+
+  const payload = createBackupPayload(demo);
+  assert.equal(payload.data.backupConfig.googleDriveAccessToken, undefined);
+  assert.equal(payload.data.backupConfig.googleDriveTokenExpiresAt, undefined);
+  assert.equal(payload.data.backupConfig.localBackupDirLabel, 'Backups');
+
+  const restored = parseBackupPayload(JSON.stringify(payload));
+  assert.equal(restored.cardioLogs?.length, 4);
+  assert.equal(restored.splits.length, 3);
+
+  assert.equal(isDriveSessionActive(demo.backupConfig, 1_900_000), true);
+  assert.equal(isDriveSessionActive(demo.backupConfig, 1_950_000), false);
+  assert.equal(
+    isDriveSessionActive({ ...demo.backupConfig, googleDriveAccessToken: undefined }, 1_000_000),
+    false
+  );
 });

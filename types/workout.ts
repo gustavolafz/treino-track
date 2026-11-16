@@ -129,6 +129,15 @@ export interface BackupConfig {
   lastBackupAt?: string;
   lastBackupTarget?: 'google_drive' | 'local_file';
   connectedEmail?: string;
+  autoLocalBackupEnabled?: boolean;
+  localBackupDirUri?: string;
+  localBackupDirLabel?: string;
+  lastLocalAutoBackupAt?: string;
+  autoDriveBackupEnabled?: boolean;
+  googleDriveAccessToken?: string;
+  googleDriveTokenExpiresAt?: number;
+  lastAutoDriveSyncAt?: string;
+  lastAutoBackupError?: string;
 }
 
 export interface AppDataState {

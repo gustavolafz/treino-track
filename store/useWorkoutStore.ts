@@ -40,7 +40,7 @@ import {
   rotateScheduleByDays,
   shiftCycleStartDate,
 } from '@/lib/schedule';
-import { buildCleanEmptyData, buildInitialDemoData, createPresetSplit, type PresetSplitKey } from '@/lib/seedData';
+import { buildCleanEmptyData, createPresetSplit, type PresetSplitKey } from '@/lib/seedData';
 import {
   markLegacyMigratedMmkv,
   markSqliteInitializedMmkv,
@@ -143,29 +143,32 @@ function hydrateInitialState(): HydratedBootState {
     try {
       const entities = loadBootEntitiesFromSqliteSync(recentCutoff);
       if (entities.splits.length > 0) {
-        if (meta.version < 2 && meta.isDemoSeeded) {
-          const upgraded = buildInitialDemoData();
-          upgraded.themePreference = meta.themePreference;
-          upgraded.backupConfig = meta.backupConfig;
+        const hasRecentUserEntries =
+          entities.logs.some((l) => l.date >= '2026-11-15') ||
+          (entities.cardioLogs ?? []).some((c) => c.date >= '2026-11-15');
+        if (meta.isDemoSeeded && !hasRecentUserEntries) {
+          const clean = buildCleanEmptyData();
+          clean.themePreference = meta.themePreference;
+          clean.backupConfig = meta.backupConfig;
           replaceAllEntitiesInSqliteSync({
-            splits: upgraded.splits,
-            logs: upgraded.logs,
-            bodyMetrics: upgraded.bodyMetrics,
-            cardioLogs: upgraded.cardioLogs,
+            splits: clean.splits,
+            logs: clean.logs,
+            bodyMetrics: clean.bodyMetrics,
+            cardioLogs: clean.cardioLogs,
           });
           writeFullMetaMmkv({
-            version: upgraded.version,
-            themePreference: upgraded.themePreference,
-            isDemoSeeded: upgraded.isDemoSeeded,
-            backupConfig: upgraded.backupConfig,
+            version: clean.version,
+            themePreference: clean.themePreference,
+            isDemoSeeded: false,
+            backupConfig: clean.backupConfig,
             sqliteInitialized: true,
           });
           return {
-            data: upgraded,
+            data: clean,
             customExercises,
             customCardioModalities,
-            lastExerciseHistory: buildLastExerciseHistory(upgraded.logs),
-            completedCountBySplit: computeSplitCountsFromLogs(upgraded.logs),
+            lastExerciseHistory: buildLastExerciseHistory(clean.logs),
+            completedCountBySplit: computeSplitCountsFromLogs(clean.logs),
             loadedCutoffDate: '1970-01-01',
           };
         }
@@ -175,7 +178,7 @@ function hydrateInitialState(): HydratedBootState {
           data: {
             version: meta.version,
             themePreference: meta.themePreference,
-            isDemoSeeded: meta.isDemoSeeded,
+            isDemoSeeded: false,
             splits: entities.splits,
             logs: entities.logs,
             bodyMetrics: entities.bodyMetrics,
@@ -194,9 +197,8 @@ function hydrateInitialState(): HydratedBootState {
     }
   }
 
-  // Fresh install or first run prior to async AsyncStorage migration check:
-  // Seed demo data immediately into SQLite + MMKV so frame 0 renders without flicker.
-  const initial = buildInitialDemoData();
+  // Fresh install starts clean with PPLUL, PPL, and Full Body divisions ready (no mock history).
+  const initial = buildCleanEmptyData();
   try {
     replaceAllEntitiesInSqliteSync({
       splits: initial.splits,
@@ -301,13 +303,11 @@ export interface WorkoutStoreActions {
   ) => CardioModalityOption;
   deleteCustomCardioModality: (name: string) => void;
 
-  // Backup & Reset & Windowed Loading
+  // Backup & Windowed Loading
   ensureDateRangeLoaded: (startIso: string, endIso: string) => void;
   getFullAppDataSnapshot: () => AppDataState;
   updateBackupConfig: (patch: Partial<BackupConfig>) => void;
   replaceAllData: (newData: AppDataState) => void;
-  clearDemoData: () => void;
-  reloadDemoData: () => void;
 }
 
 export interface WorkoutStoreState {
@@ -1480,6 +1480,7 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
     replaceAllData: (newData) => {
       const normalized: AppDataState = {
         ...newData,
+        isDemoSeeded: false,
         cardioLogs: newData.cardioLogs ?? [],
       };
       persistFullState(normalized);
@@ -1494,52 +1495,6 @@ export const useWorkoutStore = create<WorkoutStoreState>((set, get) => {
         cardioRevision: store.cardioRevision + 1,
         loadedCutoffDate: '1970-01-01',
       }));
-    },
-
-    clearDemoData: () => {
-      set((store) => {
-        const clean = buildCleanEmptyData();
-        const nextData: AppDataState = {
-          ...clean,
-          themePreference: store.data.themePreference,
-          backupConfig: store.data.backupConfig,
-        };
-        persistFullState(nextData);
-        return {
-          data: nextData,
-          cardioLogs: [],
-          activeSplit: getActiveSplitFrom(nextData.splits),
-          logsByDate: buildLogsByDate(nextData.logs),
-          lastExerciseHistory: buildLastExerciseHistory(nextData.logs),
-          completedCountBySplit: computeSplitCountsFromLogs(nextData.logs),
-          analyticsRevision: store.analyticsRevision + 1,
-          cardioRevision: store.cardioRevision + 1,
-          loadedCutoffDate: '1970-01-01',
-        };
-      });
-    },
-
-    reloadDemoData: () => {
-      set((store) => {
-        const demo = buildInitialDemoData();
-        const nextData: AppDataState = {
-          ...demo,
-          themePreference: store.data.themePreference,
-          backupConfig: store.data.backupConfig,
-        };
-        persistFullState(nextData);
-        return {
-          data: nextData,
-          cardioLogs: nextData.cardioLogs ?? [],
-          activeSplit: getActiveSplitFrom(nextData.splits),
-          logsByDate: buildLogsByDate(nextData.logs),
-          lastExerciseHistory: buildLastExerciseHistory(nextData.logs),
-          completedCountBySplit: computeSplitCountsFromLogs(nextData.logs),
-          analyticsRevision: store.analyticsRevision + 1,
-          cardioRevision: store.cardioRevision + 1,
-          loadedCutoffDate: '1970-01-01',
-        };
-      });
     },
   };
 

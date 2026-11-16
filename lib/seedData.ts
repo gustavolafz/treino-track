@@ -446,12 +446,14 @@ export function buildInitialDemoData(): AppDataState {
 
 export function buildCleanEmptyData(): AppDataState {
   const today = toISODate(new Date());
-  const starterSplit = createPresetSplit('pplul', today);
+  const pplul = createPresetSplit('pplul', today);
+  const ppl = { ...createPresetSplit('ppl', today), status: 'past' as const };
+  const fullBody = { ...createPresetSplit('fullbody', today), status: 'past' as const };
   return {
     version: 2,
     themePreference: 'light',
     isDemoSeeded: false,
-    splits: [starterSplit],
+    splits: [pplul, ppl, fullBody],
     logs: [],
     bodyMetrics: [],
     cardioLogs: [],

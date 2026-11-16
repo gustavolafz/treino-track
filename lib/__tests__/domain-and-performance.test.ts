@@ -389,5 +389,11 @@ test('cardioCatalog and seedData provide deduplicated modalities, timing labels,
   }
 
   const clean = buildCleanEmptyData();
+  assert.equal(clean.isDemoSeeded, false);
+  assert.equal(clean.splits.length, 3);
+  assert.equal(clean.splits[0].name, 'PPLUL');
+  assert.equal(clean.splits[0].status, 'active');
+  assert.deepEqual(clean.logs, []);
+  assert.deepEqual(clean.bodyMetrics, []);
   assert.deepEqual(clean.cardioLogs, []);
 });

@@ -8,13 +8,11 @@ import {
   Download,
   KeyRound,
   Moon,
-  RefreshCw,
   Sun,
-  Trash2,
   Upload,
 } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, ScrollView, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AjustesFooterMark } from '@/components/ui/MinimalArt';
 import {
@@ -32,7 +30,6 @@ import {
   DialogTitle,
   Input,
   Label,
-  Separator,
   Text,
 } from '@/components/ui';
 import {
@@ -195,13 +192,12 @@ export default function ConfigScreen() {
   const backupConfig = useWorkoutStore((s) => s.data.backupConfig);
   const splitsCount = useWorkoutStore((s) => s.data.splits.length);
   const logsCount = useWorkoutStore((s) => s.data.logs.length);
+  const cardioLogsCount = useWorkoutStore((s) => s.cardioLogs.length);
   const bodyMetricsCount = useWorkoutStore((s) => s.data.bodyMetrics.length);
   const {
     toggleTheme,
     updateBackupConfig,
     replaceAllData,
-    clearDemoData,
-    reloadDemoData,
   } = useStoreActions();
 
   const isDark = themePreference === 'dark';
@@ -273,29 +269,6 @@ export default function ConfigScreen() {
     });
     setClientDialogOpen(false);
     showStatus('Credenciais OAuth do Google salvas.');
-  };
-
-  const confirmClearDemo = () => {
-    if (Platform.OS === 'web') {
-      clearDemoData();
-      showStatus('Dados zerados! Agora você começa do zero.');
-      return;
-    }
-    Alert.alert(
-      'Zerar dados de exemplo?',
-      'Isso remove os treinos e medições de demonstração e mantém uma rotina limpa para você começar.',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Zerar tudo',
-          style: 'destructive',
-          onPress: () => {
-            clearDemoData();
-            showStatus('Dados zerados com sucesso!');
-          },
-        },
-      ]
-    );
   };
 
   return (
@@ -433,8 +406,8 @@ export default function ConfigScreen() {
           <CardHeader>
             <CardTitle>Aparência & Dados</CardTitle>
             <CardDescription>
-              {splitsCount} divisões • {logsCount} dias registrados •{' '}
-              {bodyMetricsCount} medições corporais
+              {splitsCount} divisões • {logsCount} treinos • {cardioLogsCount} cardios •{' '}
+              {bodyMetricsCount} medições
             </CardDescription>
           </CardHeader>
           <CardContent className="gap-3">
@@ -456,37 +429,13 @@ export default function ConfigScreen() {
                 <Text>{isDark ? 'Claro' : 'Escuro'}</Text>
               </Button>
             </View>
-
-            <Separator />
-
-            <View className="flex-row gap-2">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onPress={() => {
-                  reloadDemoData();
-                  showStatus('Dados de exemplo recarregados.');
-                }}
-              >
-                <RefreshCw size={14} color={iconPrimary} />
-                <Text>Exemplo PPLUL</Text>
-              </Button>
-              <Button
-                variant="destructive"
-                className="flex-1"
-                onPress={confirmClearDemo}
-              >
-                <Trash2 size={14} color="#ffffff" />
-                <Text className="text-white">Zerar Dados</Text>
-              </Button>
-            </View>
           </CardContent>
         </Card>
 
         <View className="mt-4 mb-2 items-center gap-1.5">
           <AjustesFooterMark />
           <Text className="text-[11px] font-semibold tracking-wide text-muted-foreground/80">
-            TreinoTrack • v1.5.1
+            TreinoTrack • v1.6.0
           </Text>
           <Text className="text-[10px] text-muted-foreground/60">
             Progressão, constância e simplicidade
@@ -499,7 +448,7 @@ export default function ConfigScreen() {
         <DialogHeader>
           <DialogTitle>Configurar Google Drive OAuth</DialogTitle>
           <DialogDescription>
-            Crie um OAuth 2.0 Client ID no Google Cloud Console com a Google Drive API ativada e cole aqui.
+            Crie um OAuth 2.0 Client ID no Google Cloud Console (Google Drive API ativada). Para Android use pacote com.treinotrack.app e SHA-1 5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25.
           </DialogDescription>
         </DialogHeader>
         <View className="gap-3">
